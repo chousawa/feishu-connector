@@ -229,7 +229,7 @@ function extractMessageText(data) {
 // 处理状态追踪
 let lastTriggerTime = 0;
 let isProcessing = false;
-const TRIGGER_COOLDOWN = 30000; // 30秒冷却时间，防止重复触发
+const TRIGGER_COOLDOWN = 60000; // 60秒冷却时间，防止重复触发
 
 // 消息队列：从事件中提取的待处理链接
 const messageQueue = [];
@@ -298,7 +298,7 @@ wsClient.start({
           await runAutoProcess();
         } finally {
           isProcessing = false;
-          lastTriggerTime = 0; // 重置冷却时间
+          // 不重置冷却时间，让其自然过期
         }
       }
     },
