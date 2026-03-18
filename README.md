@@ -97,11 +97,8 @@ cp config.example.json config.json
 
 **配置说明：**
 - `feishu.app_id` / `app_secret` - 在[飞书开放平台](https://open.feishu.cn/)应用详情的凭证与基础信息获取
-- `feishu.chat_id` - 群设置中的群 ID
-- `bitable.app_token` / `table_id` - 多维表格 URL 中的参数
-  - 示例：`https://xxx.feishu.cn/bitable/appTokenxxxxx?table_id=tblxxxxx`
-  - `appTokenxxxxx` 是 app_token
-  - `tblxxxxx` 是 table_id
+- `feishu.chat_id` - 群设置中的群 ID（在飞书群设置底部会话ID）
+- `bitable.app_token` / `table_id` - 多维表格 URL 中的参数（示例：`https://xxx.feishu.cn/bitable/appTokenxxxxx?table_id=tblxxxxx`，`appTokenxxxxx` 是 app_token`tblxxxxx` 是 table_id）
 - `minimax.api_key` - 在 [MiniMax 开放平台](https://platform.minimaxi.com/) 获取
 
 ### 5. 运行
@@ -120,6 +117,23 @@ npm run trigger
 2. 在群里发送链接
 3. 输入"收集"触发处理
 4. 机器人会自动分析并写入表格
+
+**支持的链接平台：**
+- 小红书
+- 微博
+- 公众号（微信）
+- 小宇宙
+- B站
+- 抖音
+- 知乎
+- 掘金
+- 即刻
+- Twitter / X
+- GitHub
+- 36氪
+- 其他链接
+
+注意：下载后在本地使用，需要保持电脑打开，借助AI运行监听的程序，才能触发；如果想不限时间地点使用，需要将程序部署到云服务器上
 
 **触发关键词：** `收集`、`抓取`、`处理`、`开始`
 
