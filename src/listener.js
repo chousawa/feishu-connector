@@ -232,6 +232,11 @@ let isProcessing = false;
 let pendingTrigger = null; // 待处理的触发请求
 const TRIGGER_COOLDOWN = 60000; // 60秒冷却时间，防止重复触发
 const COLLECT_WINDOW = 3000; // 收集窗口：收到"收集"后等待3秒再处理
+const STARTUP_WARMUP = 10000; // 启动预热期10秒，忽略消息
+
+// 记录启动时间和已处理的消息ID
+const startupTime = Date.now();
+const processedMessages = new Set();
 
 // 消息队列：从事件中提取的待处理链接
 const messageQueue = [];
@@ -249,10 +254,32 @@ wsClient.start({
     "im.message.receive_v1": async (data) => {
       console.log("\n📩 收到消息事件");
 
+      // 启动预热期内忽略消息（防止长连接重连时重复处理）
+      if (Date.now() - startupTime < STARTUP_WARMUP) {
+        console.log("   ⏳ 预热期内，忽略消息");
+        return;
+      }
+
       const chatId = data.message?.chat_id;
+      const messageId = data.message?.message_id;
+
+      // 忽略已处理过的消息（防止重连后重复处理）
+      if (messageId && processedMessages.has(messageId)) {
+        console.log(`   ⏭️ 忽略重复消息: ${messageId}`);
+        return;
+      }
+
       if (chatId !== targetChatId) {
         console.log(`   忽略其他群: ${chatId}`);
         return;
+      }
+
+      // 记录已处理的消息
+      if (messageId) {
+        processedMessages.add(messageId);
+        if (processedMessages.size > 1000) {
+          processedMessages.clear();
+        }
       }
 
       const text = extractMessageText(data);
