@@ -39,16 +39,18 @@ npm install
 
 **消息相关：**
 - `im:message:send_as_bot` - 发送消息
-- `im:chat:readonly` - 获取群信息
+- `im:message:group:send_as_bot` - 在群组中发送消息
+- `im:chat:readonly` - 获取群组信息
+- `im:chat:member:readonly_only_getChatMember` - 获取群组成员
 
-**多维表格权限配置：**
-
-多维表格的权限通过以下方式配置：
-1. 打开飞书多维表格
-2. 点击"为协作者配置精细化权限"
-3. 将机器人添加为"管理员"
-
-（无需在应用权限中配置多维表格权限）
+**多维表格相关：**
+- `bitable:app:readonly` - 读取多维表格
+- `bitable:table:readonly` - 读取表格
+- `bitable:table:write` - 写入表格
+- `bitable:field:readonly` - 读取字段
+- `bitable:field:write` - 写入字段
+- `bitable:record:readonly` - 读取记录
+- `bitable:record:write` - 写入记录
 
 #### 3.3 订阅事件
 
