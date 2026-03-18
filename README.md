@@ -36,11 +36,18 @@ npm install
 #### 3.2 配置应用权限
 
 在应用的"权限管理"中添加以下权限：
+
+**消息相关：**
 - `im:message:send_as_bot` - 发送消息
-- `im:message:receive` - 接收消息
+- `im:message:receive` - 接收消息（通过长连接）
+- `im:chat:list` - 获取群列表
 - `im:chat:readonly` - 获取群信息
+
+**多维表格相关：**
 - `bitable:app:readonly` - 读取多维表格
 - `bitable:app:write` - 写入多维表格
+- `bitable:table:readonly` - 读取表格
+- `bitable:table:write` - 写入表格
 
 #### 3.3 订阅事件
 
