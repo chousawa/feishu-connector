@@ -45,9 +45,6 @@ npm install
 
 **多维表格相关：**
 - `bitable:app:readonly` - 读取多维表格
-- `bitable:table:readonly` - 读取表格
-- `bitable:table:write` - 写入表格
-- `bitable:field:readonly` - 读取字段
 
 > **注意**：也可以在多维表格中点击"为协作者配置精细化权限"，将机器人添加为"管理员"来获取多维表格权限。
 
