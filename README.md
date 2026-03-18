@@ -52,11 +52,13 @@ npm install
 - `bitable:record:readonly` - 读取记录
 - `bitable:record:write` - 写入记录
 
+> **注意**：也可以在多维表格中点击"为协作者配置精细化权限"，将机器人添加为"管理员"来获取多维表格权限。
+
 #### 3.3 订阅事件
 
-在"事件与回调"中订阅：
+在应用的"事件与回调"中配置：
 - 订阅方式：使用长连接接收事件
-- 事件：`im.message.receive_v1`
+- 添加事件：`im.message.receive_v1`
 
 #### 3.4 发布应用
 
