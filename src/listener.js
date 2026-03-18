@@ -229,7 +229,9 @@ function extractMessageText(data) {
 // 处理状态追踪
 let lastTriggerTime = 0;
 let isProcessing = false;
+let pendingTrigger = null; // 待处理的触发请求
 const TRIGGER_COOLDOWN = 60000; // 60秒冷却时间，防止重复触发
+const COLLECT_WINDOW = 3000; // 收集窗口：收到"收集"后等待3秒再处理
 
 // 消息队列：从事件中提取的待处理链接
 const messageQueue = [];
@@ -291,15 +293,26 @@ wsClient.start({
       // 检查是否触发
       const shouldTrigger = triggerKeywords.some(kw => text.includes(kw));
       if (shouldTrigger) {
+        if (isProcessing) {
+          console.log("   ⏳ 正在处理中，跳过");
+          return;
+        }
+
+        const now2 = Date.now();
+        if (now2 - lastTriggerTime < TRIGGER_COOLDOWN) {
+          console.log("   ⏳ 冷却时间内，跳过");
+          return;
+        }
+
         console.log("🚀 触发自动收集!");
-        lastTriggerTime = now;
+        lastTriggerTime = now2;
         isProcessing = true;
         try {
           await runAutoProcess();
         } finally {
           isProcessing = false;
-          // 不重置冷却时间，让其自然过期
         }
+        return;
       }
     },
   }),
