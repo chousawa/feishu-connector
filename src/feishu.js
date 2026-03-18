@@ -1,0 +1,427 @@
+/**
+ * 飞书 API 封装
+ * 使用 axios 直接调用飞书 Open API
+ */
+import axios from "axios";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// 加载配置
+function loadConfig() {
+  const configPath = path.join(__dirname, "..", "config.json");
+  if (!fs.existsSync(configPath)) {
+    throw new Error("配置文件 config.json 不存在，请复制 config.example.json 为 config.json 并填写配置");
+  }
+  return JSON.parse(fs.readFileSync(configPath, "utf-8"));
+}
+
+let config = null;
+let tenantAccessToken = null;
+let tokenExpireTime = 0;
+
+/**
+ * 获取配置
+ */
+export function getConfig() {
+  if (!config) {
+    config = loadConfig();
+  }
+  return config;
+}
+
+/**
+ * 获取 tenant_access_token
+ */
+async function getTenantAccessToken() {
+  const cfg = getConfig();
+  const now = Date.now();
+
+  // 检查缓存的 token 是否有效
+  if (tenantAccessToken && now < tokenExpireTime) {
+    return tenantAccessToken;
+  }
+
+  try {
+    const response = await axios.post(
+      "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
+      {
+        app_id: cfg.feishu.app_id,
+        app_secret: cfg.feishu.app_secret,
+      },
+      {
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+
+    if (response.data && response.data.tenant_access_token) {
+      tenantAccessToken = response.data.tenant_access_token;
+      // 提前5分钟过期
+      tokenExpireTime = now + (response.data.expire - 300) * 1000;
+      return tenantAccessToken;
+    }
+    throw new Error("获取 token 失败");
+  } catch (error) {
+    console.error("获取 tenant_access_token 失败:", error.message);
+    throw error;
+  }
+}
+
+/**
+ * 获取群消息
+ * @param {string} chatId 飞书群 ID
+ * @param {number} pageSize 获取消息数量
+ */
+export async function getGroupMessages(chatId = null, pageSize = 50, pageToken = null) {
+  const cfg = getConfig();
+  const targetChatId = chatId || cfg.feishu.chat_id;
+  const token = await getTenantAccessToken();
+
+  const params = {
+    container_id_type: "chat",
+    container_id: targetChatId,
+    page_size: pageSize,
+    sort: "ByCreateTimeDesc", // 按创建时间倒序，获取最新消息
+  };
+
+  if (pageToken) {
+    params.page_token = pageToken;
+  }
+
+  try {
+    const response = await axios.get(
+      "https://open.feishu.cn/open-apis/im/v1/messages",
+      {
+        params,
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    if (response.data && response.data.data && response.data.data.items) {
+      return {
+        items: response.data.data.items,
+        nextPageToken: response.data.data.page_token || null,
+      };
+    }
+    return { items: [], nextPageToken: null };
+  } catch (error) {
+    console.error("获取群消息失败:", error.response?.data?.msg || error.message);
+    throw error;
+  }
+}
+
+/**
+ * 从消息中获取文本内容
+ * @param {string} messageId 消息 ID
+ */
+export async function getMessageContent(messageId) {
+  const token = await getTenantAccessToken();
+
+  try {
+    const response = await axios.get(
+      `https://open.feishu.cn/open-apis/im/v1/messages/${messageId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    if (response.data && response.data.data && response.data.data.body) {
+      return response.data.data.body;
+    }
+    return null;
+  } catch (error) {
+    console.error(`获取消息 ${messageId} 内容失败:`, error.message);
+    return null;
+  }
+}
+
+/**
+ * 写入多维表格记录
+ * @param {Object} record 记录数据
+ */
+export async function writeToBitable(record) {
+  const cfg = getConfig();
+  const token = await getTenantAccessToken();
+
+  const fields = {
+    "链接": { "text": record.url, "url": record.url || "" },
+    "标题": record.title || "",
+    "来源": record.source || "其他",
+    "方向": record.topics || "",
+    "内容概括": record.summary || "",
+    "优先级": String(record.priority || 3),
+    "状态": record.status || "未读",
+    "添加时间": new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 16).replace("T", " "),
+  };
+
+  try {
+    // 先获取所有记录，找空记录
+    const listResp = await axios.get(
+      `https://open.feishu.cn/open-apis/bitable/v1/apps/${cfg.bitable.app_token}/tables/${cfg.bitable.table_id}/records`,
+      {
+        params: { page_size: 100 },
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+
+    if (listResp.data && listResp.data.data && listResp.data.data.items) {
+      const items = listResp.data.data.items;
+
+      // 找空记录
+      const emptyRecord = items.find(item => !item.fields || Object.keys(item.fields).length === 0);
+
+      if (emptyRecord) {
+        // 用 PUT 更新空记录
+        const updateResp = await axios.put(
+          `https://open.feishu.cn/open-apis/bitable/v1/apps/${cfg.bitable.app_token}/tables/${cfg.bitable.table_id}/records/${emptyRecord.id}`,
+          { fields },
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        if (updateResp.data && updateResp.data.msg === "success") {
+          console.log(`✅ 成功写入记录: ${record.title}`);
+          return updateResp.data.data.record;
+        }
+      }
+    }
+
+    // 如果没有空记录，尝试 POST（不需要 records 包装）
+    const postResp = await axios.post(
+      `https://open.feishu.cn/open-apis/bitable/v1/apps/${cfg.bitable.app_token}/tables/${cfg.bitable.table_id}/records`,
+      { fields },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    if (postResp.data && postResp.data.data && postResp.data.data.record) {
+      console.log(`✅ 成功写入记录: ${record.title}`);
+      return postResp.data.data.record;
+    }
+    return null;
+  } catch (error) {
+    console.error("写入多维表格失败:", error.response?.data?.msg || error.message);
+    throw error;
+  }
+}
+
+/**
+ * 获取多维表格的所有记录
+ */
+export async function getBitableRecords() {
+  const cfg = getConfig();
+  const token = await getTenantAccessToken();
+
+  try {
+    const response = await axios.get(
+      `https://open.feishu.cn/open-apis/bitable/v1/apps/${cfg.bitable.app_token}/tables/${cfg.bitable.table_id}/records`,
+      {
+        params: {
+          page_size: 100,
+        },
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    if (response.data && response.data.data && response.data.data.items) {
+      return response.data.data.items;
+    }
+    return [];
+  } catch (error) {
+    console.error("获取多维表格记录失败:", error.response?.data?.msg || error.message);
+    return [];
+  }
+}
+
+/**
+ * 获取群列表
+ */
+export async function getChatList() {
+  const token = await getTenantAccessToken();
+
+  try {
+    const response = await axios.get(
+      "https://open.feishu.cn/open-apis/im/v1/chats",
+      {
+        params: {
+          page_size: 100,
+        },
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    if (response.data && response.data.data && response.data.data.items) {
+      return response.data.data.items;
+    }
+    return [];
+  } catch (error) {
+    console.error("获取群列表失败:", error.response?.data?.msg || error.message);
+    throw error;
+  }
+}
+
+/**
+ * 发送消息到群
+ * @param {string} chatId 群 ID
+ * @param {string} text 消息文本
+ */
+export async function sendMessage(chatId, text) {
+  const token = await getTenantAccessToken();
+
+  try {
+    // 清理文本
+    const cleanText = text.replace(/[\x00-\x1F\x7F]/g, '').slice(0, 5000);
+
+    const response = await axios.post(
+      "https://open.feishu.cn/open-apis/im/v1/messages",
+      {
+        receive_id_type: "chat_id",
+        receive_id: chatId,
+        msg_type: "text",
+        content: JSON.stringify({ text: cleanText }),
+      },
+      {
+        params: {
+          receive_id_type: "chat_id",
+        },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    if (response.data && response.data.msg === "success") {
+      return true;
+    }
+    console.error("发送消息失败:", JSON.stringify(response.data, null, 2));
+    return false;
+  } catch (error) {
+    console.error("发送消息失败:", JSON.stringify(error.response?.data, null, 2) || error.message);
+    return false;
+  }
+}
+
+/**
+ * 获取最新消息（用于监听模式）
+ * @param {string} chatId 群 ID
+ * @param {number} pageSize 消息数量
+ */
+export async function getLatestMessages(chatId, pageSize = 20) {
+  const token = await getTenantAccessToken();
+
+  try {
+    const response = await axios.get(
+      "https://open.feishu.cn/open-apis/im/v1/messages",
+      {
+        params: {
+          container_id_type: "chat",
+          container_id: chatId,
+          page_size: pageSize,
+          sort: "ByCreateTimeDesc",
+        },
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    if (response.data && response.data.data && response.data.data.items) {
+      return response.data.data.items;
+    }
+    return [];
+  } catch (error) {
+    console.error("获取消息失败:", error.response?.data?.msg || error.message);
+    return [];
+  }
+}
+
+/**
+ * 创建多维表格字段
+ * @param {string} fieldName 字段名称
+ * @param {string} fieldType 字段类型 (text, number, singleSelect, multiSelect, date, checkbox, url)
+ */
+export async function createField(fieldName, fieldType = "text") {
+  const cfg = getConfig();
+  const token = await getTenantAccessToken();
+
+  const fieldConfig = {
+    field_name: fieldName,
+    type: getFieldTypeId(fieldType),
+  };
+
+  try {
+    const response = await axios.post(
+      `https://open.feishu.cn/open-apis/bitable/v1/apps/${cfg.bitable.app_token}/tables/${cfg.bitable.table_id}/fields`,
+      fieldConfig,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    if (response.data && response.data.msg === "success") {
+      console.log(`✅ 字段 "${fieldName}" 创建成功`);
+      return response.data.data;
+    }
+    return null;
+  } catch (error) {
+    if (error.response?.data?.msg?.includes("field_name already exists")) {
+      console.log(`ℹ️ 字段 "${fieldName}" 已存在`);
+      return null;
+    }
+    console.error(`创建字段 "${fieldName}" 失败:`, error.response?.data?.msg || error.message);
+    return null;
+  }
+}
+
+/**
+ * 获取字段类型 ID
+ */
+function getFieldTypeId(type) {
+  const typeMap = {
+    text: 1,          // 文本
+    number: 2,        // 数字
+    singleSelect: 3,  // 单选
+    multiSelect: 4,   // 多选
+    date: 5,          // 日期
+    checkbox: 7,      // 复选框
+    url: 15,          // 链接
+    person: 17,       // 人员
+    group: 18,        // 群组
+  };
+  return typeMap[type] || 1;
+}
+
+export default {
+  getConfig,
+  getGroupMessages,
+  getMessageContent,
+  writeToBitable,
+  getBitableRecords,
+  getChatList,
+  createField,
+  sendMessage,
+  getLatestMessages,
+};

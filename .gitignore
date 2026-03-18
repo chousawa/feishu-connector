@@ -1,0 +1,11 @@
+node_modules/
+*.log
+.DS_Store
+.env
+auto_collect.log
+stock_monitor.log
+content.json
+config.json
+11
+chats/
+.playwright-mcp/

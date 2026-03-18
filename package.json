@@ -1,0 +1,25 @@
+{
+  "name": "feishu-connector",
+  "version": "1.0.0",
+  "description": "飞书信息收集助手 - 从飞书群收集链接并整理到多维表格",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "listen": "node src/listener.js",
+    "trigger": "node src/index.js --trigger",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "feishu",
+    "connector",
+    "link-collector"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.0.0",
+    "axios": "^1.6.0",
+    "playwright": "^1.58.2"
+  }
+}

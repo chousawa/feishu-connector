@@ -1,0 +1,16 @@
+{
+  "feishu": {
+    "app_id": "cli_a9332476bb389bd8",
+    "app_secret": "NWcNMv5TLHKWWgUWWICHEe1cqlZ1vNcH",
+    "chat_id": "oc_697cdd82dee1f41112092ff3515190b6"
+  },
+  "bitable": {
+    "app_token": "WiAfbHcL6a8cQasNYHuc740Xn8f",
+    "table_id": "tblyh1OTIQpgwP2E"
+  },
+  "minimax": {
+    "api_key": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJHcm91cE5hbWUiOiJzYXdhIiwiVXNlck5hbWUiOiJzYXdhIiwiQWNjb3VudCI6IiIsIlN1YmplY3RJRCI6IjE5OTM5MjMxNjgzMTc3NDM5MzgiLCJQaG9uZSI6IjE4NzIxNzM5Mzk5IiwiR3JvdXBJRCI6IjE5OTM5MjMxNjgyNjc0MTIyOTAiLCJQYWdlTmFtZSI6IiIsIk1haWwiOiIiLCJDcmVhdGVUaW1lIjoiMjAyNS0xMS0yOCAxNjoyMjo1OCIsIlRva2VuVHlwZSI6NCwiaXNzIjoibWluaW1heCJ9.YHiYvaVOwRKkVZrB-ADVLZ5KVDcPU7UTLw-yKjQzQlSAaHwg3341xfB5Zy5iUv_B5VUm1mMANUQGh_An8t_bEHizXNLpV08qtT3FrV68wYmbLH01p0n9jUF90LbV7rvDMFtVetW2G3cmnEV-Dj3WqiMjuwZr9si785bU9VXwj73K21mVjudyNbhDH22aF4R0KXLe_BdWgHqiTb6WdtVP9PhoGDTb1rTwzPk-bDy1CQfWZ5TTkGLkO1nKOUzn6QXw11lTWJua2GNOyz35a7Rw5BewAp8y5_VLCWTM414qouURajEpZv_1OSP5zk7FycLLNa7Roe7cYODEtcj_q0nuEg",
+    "base_url": "https://api.minimaxi.com/anthropic",
+    "model": "MiniMax-M2.5"
+  }
+}
