@@ -38,15 +38,20 @@ npm install
 在应用的"权限管理"中添加以下权限：
 
 **消息相关：**
-- `im:message:send_as_bot` - 发送消息
-- `im:message:group:send_as_bot` - 在群组中发送消息
+- `im:chat:read` - 查看群信息
 - `im:chat:readonly` - 获取群组信息
+- `im:message` - 获取与发送单聊、群组消息
+- `im:message:send_as_bot` - 以应用的身份发消息
+- `im:message.group_msg` - 获取群组中所有消息
+
 - `im:chat:member:readonly_only_getChatMember` - 获取群组成员
 
 **多维表格相关：**
 - `bitable:app:readonly` - 读取多维表格
+- `bitable:app` - 管理多维表格
 
-> **注意**：也可以在多维表格中点击"为协作者配置精细化权限"，将机器人添加为"管理员"来获取多维表格权限。
+
+> **注意**：同时多维表格中点击"为协作者配置精细化权限"，将机器人添加为"管理员"来获取多维表格创建、编辑权限。
 
 #### 3.3 订阅事件
 
@@ -69,7 +74,7 @@ npm install
 cp config.example.json config.json
 ```
 
-编辑 `config.json`，填入你的配置：
+编辑 `config.json`，填入你的配置，这里我使用的模型是minimax的coding plan，量大划算：
 
 ```json
 {
@@ -91,9 +96,12 @@ cp config.example.json config.json
 ```
 
 **配置说明：**
-- `feishu.app_id` / `app_secret` - 在飞书应用详情页获取
+- `feishu.app_id` / `app_secret` - 在[飞书开放平台](https://open.feishu.cn/)应用详情的凭证与基础信息获取
 - `feishu.chat_id` - 群设置中的群 ID
 - `bitable.app_token` / `table_id` - 多维表格 URL 中的参数
+  - 示例：`https://xxx.feishu.cn/bitable/appTokenxxxxx?table_id=tblxxxxx`
+  - `appTokenxxxxx` 是 app_token
+  - `tblxxxxx` 是 table_id
 - `minimax.api_key` - 在 [MiniMax 开放平台](https://platform.minimaxi.com/) 获取
 
 ### 5. 运行
