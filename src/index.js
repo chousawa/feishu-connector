@@ -516,12 +516,15 @@ async function executeAutoFlow(chatId, topics) {
   let skipCount = 0;
   const titles = [];
 
+  // 一次性获取已存在 URL，避免循环内重复调用 API
+  const existingUrls = await getExistingUrls();
+
   for (let i = 0; i < links.length; i++) {
     const link = links[i];
 
     try {
       // 再次检查URL是否已存在（防止重复写入）
-      if (await isUrlExists(link.url)) {
+      if (existingUrls.has(link.url)) {
         console.log(`   ⏭️  跳过已存在: ${link.url}`);
         skipCount++;
         continue;
@@ -549,6 +552,7 @@ async function executeAutoFlow(chatId, topics) {
       };
 
       await writeToBitable(record);
+      existingUrls.add(link.url); // 防止同批次重复写入
       successCount++;
       titles.push(analysis.title);
 
@@ -624,6 +628,7 @@ async function runAuto(options) {
     process.exit(1);
   }
 
+  const chatId = options.chatId || config.feishu.chat_id;
   const topics = options.topics || "AI,产品";
   console.log(`📌 关注方向: ${topics}\n`);
 
@@ -631,80 +636,17 @@ async function runAuto(options) {
   console.log("📋 准备表格字段...");
   await createField("方向", "text");
 
-  // 步骤1: 获取链接
-  console.log("📋 步骤1: 获取飞书群链接...\n");
-  const links = await fetchLinks(options);
-
-  if (links.length === 0) {
-    console.log("✅ 未发现新链接，任务结束");
-    return;
-  }
-
-  console.log(`🔗 发现 ${links.length} 个新链接\n`);
-
-  // 步骤2: 抓取内容并处理
-  console.log("📋 步骤2: 自动抓取内容并分析...\n");
-  let successCount = 0;
-  let failCount = 0;
-  let skipCount = 0;
-
-  for (let i = 0; i < links.length; i++) {
-    const link = links[i];
-    console.log(`\n[${i + 1}/${links.length}] 处理: ${link.url}`);
-    console.log(`   平台: ${link.platform}`);
-
-    try {
-      // 抓取网页内容
-      console.log("   🌐 抓取网页内容...");
-      const content = await fetchPageContent(link.url);
-
-      if (!content) {
-        console.log("   ⚠️ 无法获取内容，跳过");
-        skipCount++;
-        continue;
-      }
-
-      console.log(`   ✅ 内容获取成功 (${content.length} 字符)`);
-
-      // 分析内容
-      console.log("   🔍 分析内容...");
-      const analysis = await analyzeContent(content, link.url, topics);
-
-      console.log(`   📝 标题: ${analysis.title}`);
-      console.log(`   📊 相关度: ${analysis.relevance}/5`);
-
-      // 写入多维表格
-      const record = {
-        url: link.url,
-        title: analysis.title,
-        source: link.platform,
-        topics: analysis.direction,
-        summary: analysis.summary,
-        priority: analysis.relevance,
-        status: "未读",
-      };
-
-      await writeToBitable(record);
-      successCount++;
-      console.log("   ✅ 已写入多维表格");
-
-      // 避免请求过快
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
-    } catch (error) {
-      console.error(`   ❌ 处理失败: ${error.message}`);
-      failCount++;
-    }
-  }
+  // 执行自动化流程（获取链接 → 抓取内容 → 分析 → 写入表格）
+  const result = await executeAutoFlow(chatId, topics);
 
   console.log("\n" + "=".repeat(50));
-  console.log("📊 全自动流程执行完成!");
-  console.log(`   ✅ 成功: ${successCount} 条`);
-  if (skipCount > 0) {
-    console.log(`   ⏭️  跳过: ${skipCount} 条`);
-  }
-  if (failCount > 0) {
-    console.log(`   ❌ 失败: ${failCount} 条`);
+  if (result.success === 0 && result.fail === 0 && result.skip === 0) {
+    console.log("✅ 未发现新链接，任务结束");
+  } else {
+    console.log("📊 全自动流程执行完成!");
+    console.log(`   ✅ 成功: ${result.success} 条`);
+    if (result.skip > 0) console.log(`   ⏭️  跳过: ${result.skip} 条`);
+    if (result.fail > 0) console.log(`   ❌ 失败: ${result.fail} 条`);
   }
   console.log("=".repeat(50));
 }
@@ -758,4 +700,4 @@ main().catch((error) => {
 });
 
 // 导出函数供其他模块使用
-export { executeAutoFlow, fetchLinks, isUrlExists };
+export { executeAutoFlow, fetchLinks, isUrlExists, getExistingUrls };

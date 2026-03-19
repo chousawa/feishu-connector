@@ -4,7 +4,7 @@
  */
 import { Client, WSClient, EventDispatcher, LoggerLevel } from "@larksuiteoapi/node-sdk";
 import { getConfig, writeToBitable, createField, sendMessage } from "./feishu.js";
-import { fetchLinks, isUrlExists } from "./index.js";
+import { fetchLinks, getExistingUrls } from "./index.js";
 import { fetchPageContent } from "./scraper.js";
 import { analyzeContent } from "./analyzer.js";
 import { parseMessageLinks, getPlatform } from "./linkParser.js";
@@ -57,10 +57,11 @@ async function sendReply(chatId, text) {
 
 // 使用 Playwright 获取微博内容
 async function fetchWeiboWithPlaywright(url) {
+  let browser;
   try {
     // 动态导入 playwright
     const { chromium } = await import('playwright');
-    const browser = await chromium.launch({ headless: true });
+    browser = await chromium.launch({ headless: true });
     const page = await browser.newPage();
 
     await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
@@ -80,8 +81,6 @@ async function fetchWeiboWithPlaywright(url) {
       return '';
     });
 
-    await browser.close();
-
     if (content && content.length > 50) {
       return content;
     }
@@ -89,6 +88,8 @@ async function fetchWeiboWithPlaywright(url) {
   } catch (error) {
     console.error(`   Playwright获取失败: ${error.message}`);
     return null;
+  } finally {
+    if (browser) await browser.close();
   }
 }
 
@@ -130,13 +131,16 @@ async function runAutoProcess() {
     let skipCount = 0;
     const titles = [];
 
+    // 一次性获取已存在 URL，避免循环内重复调用 API
+    const existingUrls = await getExistingUrls();
+
     for (let i = 0; i < links.length; i++) {
       const link = links[i];
       console.log(`   处理 [${i + 1}/${links.length}]: ${link.url}`);
 
       try {
         // 再次检查URL是否已存在（防止重复写入）
-        if (await isUrlExists(link.url)) {
+        if (existingUrls.has(link.url)) {
           console.log(`   ⏭️  跳过已存在: ${link.url}`);
           skipCount++;
           continue;
@@ -171,6 +175,7 @@ async function runAutoProcess() {
         };
 
         await writeToBitable(record);
+        existingUrls.add(link.url); // 防止同批次重复写入
         successCount++;
         titles.push(analysis.title);
 
