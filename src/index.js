@@ -182,8 +182,6 @@ async function fetchLinks(options) {
   const existingUrls = await getExistingUrls();
   const allMessages = [];
   let pageToken = null;
-  let hasNewUrlsInPage = true;
-  let consecutiveEmptyPages = 0;
 
   do {
     const result = await getGroupMessages(options.chatId, 50, pageToken);
@@ -191,35 +189,8 @@ async function fetchLinks(options) {
 
     if (messages.length === 0) break;
 
-    // 检查这页是否有任何新链接
-    hasNewUrlsInPage = false;
-    for (const msg of messages) {
-      const text = extractMessageText(msg);
-      if (text) {
-        const parsedLinks = parseMessageLinks(text);
-        for (const link of parsedLinks) {
-          if (!existingUrls.has(link.url)) {
-            hasNewUrlsInPage = true;
-            break;
-          }
-        }
-      }
-      if (hasNewUrlsInPage) break;
-    }
-
     allMessages.push(...messages);
-    console.log(`   获取到 ${allMessages.length} 条消息${hasNewUrlsInPage ? ' (发现新链接)' : ''}...`);
-
-    // 如果这页没有新链接，连续3页都没有新链接就停止
-    if (!hasNewUrlsInPage) {
-      consecutiveEmptyPages++;
-      if (consecutiveEmptyPages >= 3) {
-        console.log(`   连续3页无新链接，停止获取`);
-        break;
-      }
-    } else {
-      consecutiveEmptyPages = 0;
-    }
+    console.log(`   获取到 ${allMessages.length} 条消息...`);
 
     pageToken = result.nextPageToken;
     if (!pageToken) break;

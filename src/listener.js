@@ -162,7 +162,14 @@ async function runAutoProcess() {
           continue;
         }
 
-        const analysis = await analyzeContent(content, link.url, topics);
+        let analysis;
+        try {
+          analysis = await analyzeContent(content, link.url, topics);
+        } catch (e) {
+          console.log(`   ⏭️  跳过（分析失败）: ${link.url}`);
+          skipCount++;
+          continue;
+        }
 
         const record = {
           url: link.url,

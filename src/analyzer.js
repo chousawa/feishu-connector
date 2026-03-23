@@ -53,12 +53,13 @@ ${truncatedContent}
             content: prompt,
           },
         ],
+        max_tokens: 1024,
         temperature: 0.7,
       },
       {
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${miniMaxConfig.api_key}`,
+          "x-api-key": miniMaxConfig.api_key,
         },
         timeout: 60000,
       }
