@@ -22,6 +22,20 @@ ssh feishu 'pm2 restart feishu-collector'                      # 重启服务
 - 进程名: feishu-collector（运行 src/listener.js）
 - 在飞书群发"收集"触发采集流程
 
+## 开发部署流程
+
+```bash
+# 1. 本地改代码、测试
+# 2. 提交推送到 CNB
+git add . && git commit -m "..." && git push origin master
+
+# 3. 服务器拉取并重启
+ssh feishu "cd /home/admin/feishu-connector && git pull && pm2 restart feishu-collector"
+```
+
+- 远程仓库: https://cnb.cool/sawa-2025/feishu-connector（同步镜像到 GitHub）
+- 服务器已配置好 CNB 凭证，直接 `git pull` 即可
+
 ## 项目架构
 
 | 文件 | 作用 |
