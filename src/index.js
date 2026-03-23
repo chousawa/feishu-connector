@@ -665,10 +665,13 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error("❌ 程序异常:", error);
-  process.exit(1);
-});
+// 只在直接运行时执行 main()，被 import 时不执行
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error("❌ 程序异常:", error);
+    process.exit(1);
+  });
+}
 
 // 导出函数供其他模块使用
 export { executeAutoFlow, fetchLinks, isUrlExists, getExistingUrls };
