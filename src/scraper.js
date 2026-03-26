@@ -115,12 +115,22 @@ async function fetchXiaohongshu(url) {
         const noteData = Object.values(data.note.noteDetailMap)[0];
         if (noteData && noteData.note) {
           content = noteData.note.title + "\n" + (noteData.note.desc || "");
-          author = noteData.note.user?.nickname || noteData.note.user?.name || "";
+          author = noteData.note.user?.nickname || noteData.note.user?.nickName || noteData.note.user?.name || "";
         }
+      }
+      // 顶层 user 对象（xhslink 短链重定向后的结构）
+      if (!author && data.user && data.user.nickname) {
+        author = data.user.nickname;
       }
     } catch (e) {
       // 忽略解析错误
     }
+  }
+
+  // 兜底：直接从 HTML 正则提取 nickname
+  if (!author) {
+    const nicknameMatch = html.match(/"nickname"\s*:\s*"([^"]+)"/);
+    if (nicknameMatch) author = nicknameMatch[1];
   }
 
   if (!content || content.length < 10) {
