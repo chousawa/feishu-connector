@@ -72,7 +72,17 @@ async function fetchWechatArticle(url) {
     }
   }
 
-  return `标题: ${title}\n\n内容: ${content.slice(0, 8000)}`;
+  // 提取作者（公众号名）
+  let author = "";
+  const nicknameMatch = html.match(/var\s+nickname\s*=\s*"([^"]+)"/) ||
+                        html.match(/"nick_name"\s*:\s*"([^"]+)"/) ||
+                        html.match(/id="js_name"[^>]*>([^<]+)</) ||
+                        html.match(/<meta[^>]*name="author"[^>]*content="([^"]+)"/i);
+  if (nicknameMatch) {
+    author = nicknameMatch[1].trim();
+  }
+
+  return `标题: ${title}\n\n作者: ${author}\n\n内容: ${content.slice(0, 8000)}`;
 }
 
 /**
@@ -96,6 +106,7 @@ async function fetchXiaohongshu(url) {
   const jsonMatch = html.match(/window\.__INITIAL_STATE__\s*=\s*({[\s\S]*?});/i);
   let content = "";
 
+  let author = "";
   if (jsonMatch) {
     try {
       const data = JSON.parse(jsonMatch[1]);
@@ -104,6 +115,7 @@ async function fetchXiaohongshu(url) {
         const noteData = Object.values(data.note.noteDetailMap)[0];
         if (noteData && noteData.note) {
           content = noteData.note.title + "\n" + (noteData.note.desc || "");
+          author = noteData.note.user?.nickname || noteData.note.user?.name || "";
         }
       }
     } catch (e) {
@@ -117,7 +129,7 @@ async function fetchXiaohongshu(url) {
     content = descMatch ? descMatch[1] : "";
   }
 
-  return `标题: ${title}\n\n内容: ${content.slice(0, 8000)}`;
+  return `标题: ${title}\n\n作者: ${author}\n\n内容: ${content.slice(0, 8000)}`;
 }
 
 /**
@@ -141,16 +153,35 @@ async function fetchZhihu(url) {
   const jsonMatch = html.match(/<script[^>]*id="js-initialData"[^>]*>([\s\S]*?)<\/script>/i);
   let content = "";
 
+  let author = "";
   if (jsonMatch) {
     try {
       const data = JSON.parse(jsonMatch[1]);
-      // 提取答案内容
+      // 提取答案内容和作者
       if (data.initialState && data.initialState.entities) {
         const answers = data.initialState.entities.answers;
+        const users = data.initialState.entities.users;
         if (answers) {
           const firstAnswer = Object.values(answers)[0];
           if (firstAnswer && firstAnswer.content) {
             content = cleanHtml(firstAnswer.content);
+          }
+          if (firstAnswer && firstAnswer.author && users) {
+            const authorId = firstAnswer.author.id || firstAnswer.author.urlToken;
+            const userInfo = users[authorId];
+            author = userInfo?.name || "";
+          }
+        }
+        // 知乎文章（专栏）
+        if (!author) {
+          const articles = data.initialState.entities.articles;
+          if (articles) {
+            const firstArticle = Object.values(articles)[0];
+            if (firstArticle && firstArticle.author && users) {
+              const authorId = firstArticle.author.id || firstArticle.author.urlToken;
+              const userInfo = users[authorId];
+              author = userInfo?.name || "";
+            }
           }
         }
       }
@@ -159,7 +190,7 @@ async function fetchZhihu(url) {
     }
   }
 
-  return `标题: ${title}\n\n内容: ${content.slice(0, 8000)}`;
+  return `标题: ${title}\n\n作者: ${author}\n\n内容: ${content.slice(0, 8000)}`;
 }
 
 /**
@@ -192,7 +223,7 @@ async function fetchWeibo(url) {
       // 解析HTML
       const plainText = text.replace(/<[^>]+>/g, "");
 
-      return `标题: ${userName} 的微博\n\n发布时间: ${createdAt}\n\n内容: ${plainText.slice(0, 8000)}`;
+      return `标题: ${userName} 的微博\n\n作者: ${userName}\n\n发布时间: ${createdAt}\n\n内容: ${plainText.slice(0, 8000)}`;
     }
 
     // 如果API失败，返回基本信息
@@ -258,6 +289,11 @@ async function fetchGenericPage(url) {
     const descMatch = html.match(/<meta[^>]*name="description"[^>]*content="([^"]+)"/i);
     const description = descMatch ? descMatch[1] : "";
 
+    // 提取 meta 作者
+    const authorMatch = html.match(/<meta[^>]*name="author"[^>]*content="([^"]+)"/i) ||
+                        html.match(/<meta[^>]*property="article:author"[^>]*content="([^"]+)"/i);
+    const author = authorMatch ? authorMatch[1] : "";
+
     // 尝试提取正文
     const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
     let content = "";
@@ -266,7 +302,7 @@ async function fetchGenericPage(url) {
       content = cleanHtml(bodyMatch[1]);
     }
 
-    return `标题: ${title}\n\n描述: ${description}\n\n内容: ${content.slice(0, 6000)}`;
+    return `标题: ${title}\n\n作者: ${author}\n\n描述: ${description}\n\n内容: ${content.slice(0, 6000)}`;
   } catch (error) {
     console.error(`   获取页面失败: ${error.message}`);
     return null;
