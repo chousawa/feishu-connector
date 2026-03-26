@@ -174,6 +174,7 @@ async function runAutoProcess() {
         const record = {
           url: link.url,
           title: analysis.title,
+          author: analysis.author,
           source: link.platform,
           topics: analysis.direction,
           summary: analysis.summary,

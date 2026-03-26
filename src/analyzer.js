@@ -30,6 +30,7 @@ ${truncatedContent}
 请以JSON格式返回分析结果，包含以下字段：
 {
   "title": "标题（如果无法提取则用'未知标题'）",
+  "author": "作者或发布者名称（如果无法提取则用空字符串）",
   "summary": "内容概括（50-200字）",
   "relevance": "与关注方向的相关度评分（1-5分，5分最高）",
   "direction": "内容方向，如果是AI相关可以是：AI创作,AI编程,AI求职,AI产品,AI资讯。如果都不是，请用2-4个字总结一个最贴切的方向（如：产品设计、职场成长、技术分享等）",
@@ -93,6 +94,7 @@ ${truncatedContent}
 
         return {
           title: result.title || "未知标题",
+          author: result.author || "",
           summary: result.summary || "",
           relevance: parseInt(result.relevance) || 3,
           direction: result.direction || "其他",
@@ -121,6 +123,7 @@ ${truncatedContent}
 
         return {
           title: title,
+          author: "",
           summary: summary,
           relevance: 3,
           direction: "其他",
@@ -135,6 +138,7 @@ ${truncatedContent}
     // 返回默认值
     return {
       title: "获取失败",
+      author: "",
       summary: "内容获取失败",
       relevance: 1,
       direction: "其他",

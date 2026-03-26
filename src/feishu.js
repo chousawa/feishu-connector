@@ -153,6 +153,7 @@ export async function writeToBitable(record) {
   const fields = {
     "链接": { "text": record.url, "url": record.url || "" },
     "标题": record.title || "",
+    "作者": record.author || "",
     "来源": record.source || "其他",
     "方向": record.topics || "",
     "内容概括": record.summary || "",
