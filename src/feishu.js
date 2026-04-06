@@ -163,38 +163,39 @@ export async function writeToBitable(record) {
   };
 
   try {
-    // 先获取所有记录，找空记录
+    // 获取记录，找空记录
     const listResp = await axios.get(
       `https://open.feishu.cn/open-apis/bitable/v1/apps/${cfg.bitable.app_token}/tables/${cfg.bitable.table_id}/records`,
       {
-        params: { page_size: 100 },
+        params: {
+          page_size: 100,
+        },
         headers: { Authorization: `Bearer ${token}` },
       }
     );
 
+    let emptyRecord = null;
     if (listResp.data && listResp.data.data && listResp.data.data.items) {
-      const items = listResp.data.data.items;
-
       // 找空记录
-      const emptyRecord = items.find(item => !item.fields || Object.keys(item.fields).length === 0);
+      emptyRecord = listResp.data.data.items.find(item => !item.fields || Object.keys(item.fields).length === 0);
+    }
 
-      if (emptyRecord) {
-        // 用 PUT 更新空记录
-        const updateResp = await axios.put(
-          `https://open.feishu.cn/open-apis/bitable/v1/apps/${cfg.bitable.app_token}/tables/${cfg.bitable.table_id}/records/${emptyRecord.id}`,
-          { fields },
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-          }
-        );
-
-        if (updateResp.data && updateResp.data.msg === "success") {
-          console.log(`✅ 成功写入记录: ${record.title}`);
-          return updateResp.data.data.record;
+    if (emptyRecord) {
+      // 用 PUT 更新空记录
+      const updateResp = await axios.put(
+        `https://open.feishu.cn/open-apis/bitable/v1/apps/${cfg.bitable.app_token}/tables/${cfg.bitable.table_id}/records/${emptyRecord.id}`,
+        { fields },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
         }
+      );
+
+      if (updateResp.data && updateResp.data.msg === "success") {
+        console.log(`✅ 成功写入记录: ${record.title}`);
+        return updateResp.data.data.record;
       }
     }
 
@@ -222,7 +223,7 @@ export async function writeToBitable(record) {
 }
 
 /**
- * 获取多维表格的所有记录
+ * 获取多维表格的记录（取最近100条）
  */
 export async function getBitableRecords() {
   const cfg = getConfig();
@@ -242,7 +243,14 @@ export async function getBitableRecords() {
     );
 
     if (response.data && response.data.data && response.data.data.items) {
-      return response.data.data.items;
+      // 按创建时间倒序排序，最新的在前
+      const items = response.data.data.items;
+      items.sort((a, b) => {
+        const timeA = parseInt(a.created_time) || 0;
+        const timeB = parseInt(b.created_time) || 0;
+        return timeB - timeA;
+      });
+      return items;
     }
     return [];
   } catch (error) {
