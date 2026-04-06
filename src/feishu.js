@@ -163,22 +163,30 @@ export async function writeToBitable(record) {
   };
 
   try {
-    // 获取记录，找空记录
-    const listResp = await axios.get(
-      `https://open.feishu.cn/open-apis/bitable/v1/apps/${cfg.bitable.app_token}/tables/${cfg.bitable.table_id}/records`,
-      {
-        params: {
-          page_size: 100,
-        },
-        headers: { Authorization: `Bearer ${token}` },
-      }
-    );
-
+    // 获取所有记录，找空记录（完整分页）
+    let pageToken = null;
     let emptyRecord = null;
-    if (listResp.data && listResp.data.data && listResp.data.data.items) {
-      // 找空记录
-      emptyRecord = listResp.data.data.items.find(item => !item.fields || Object.keys(item.fields).length === 0);
-    }
+
+    do {
+      const params = { page_size: 100 };
+      if (pageToken) params.page_token = pageToken;
+
+      const listResp = await axios.get(
+        `https://open.feishu.cn/open-apis/bitable/v1/apps/${cfg.bitable.app_token}/tables/${cfg.bitable.table_id}/records`,
+        {
+          params,
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      if (listResp.data && listResp.data.data && listResp.data.data.items) {
+        emptyRecord = listResp.data.data.items.find(item => !item.fields || Object.keys(item.fields).length === 0);
+        if (emptyRecord) break;
+        pageToken = listResp.data.data.page_token || null;
+      } else {
+        break;
+      }
+    } while (pageToken);
 
     if (emptyRecord) {
       // 用 PUT 更新空记录
@@ -223,36 +231,40 @@ export async function writeToBitable(record) {
 }
 
 /**
- * 获取多维表格的记录（取最近100条）
+ * 获取多维表格的所有记录（完整分页）
  */
 export async function getBitableRecords() {
   const cfg = getConfig();
   const token = await getTenantAccessToken();
+  const allRecords = [];
+  let pageToken = null;
 
   try {
-    const response = await axios.get(
-      `https://open.feishu.cn/open-apis/bitable/v1/apps/${cfg.bitable.app_token}/tables/${cfg.bitable.table_id}/records`,
-      {
-        params: {
-          page_size: 100,
-        },
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+    do {
+      const params = { page_size: 100 };
+      if (pageToken) {
+        params.page_token = pageToken;
       }
-    );
 
-    if (response.data && response.data.data && response.data.data.items) {
-      // 按创建时间倒序排序，最新的在前
-      const items = response.data.data.items;
-      items.sort((a, b) => {
-        const timeA = parseInt(a.created_time) || 0;
-        const timeB = parseInt(b.created_time) || 0;
-        return timeB - timeA;
-      });
-      return items;
-    }
-    return [];
+      const response = await axios.get(
+        `https://open.feishu.cn/open-apis/bitable/v1/apps/${cfg.bitable.app_token}/tables/${cfg.bitable.table_id}/records`,
+        {
+          params,
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (response.data && response.data.data && response.data.data.items) {
+        allRecords.push(...response.data.data.items);
+        pageToken = response.data.data.page_token || null;
+      } else {
+        break;
+      }
+    } while (pageToken);
+
+    return allRecords;
   } catch (error) {
     console.error("获取多维表格记录失败:", error.response?.data?.msg || error.message);
     return [];
