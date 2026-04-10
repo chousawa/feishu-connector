@@ -59,30 +59,28 @@ async function sendReply(chatId, text) {
 async function fetchWeiboWithPlaywright(url) {
   let browser;
   try {
-    // 动态导入 playwright
     const { chromium } = await import('playwright');
     browser = await chromium.launch({ headless: true });
     const page = await browser.newPage();
 
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
-    await page.waitForTimeout(3000); // 等待页面加载
+    // 转换为移动端 URL（内容更完整）
+    const mobileUrl = url.replace('weibo.com/', 'm.weibo.cn/detail/').replace(/\/(\d+)\/(\w+)/, '/$2');
+    await page.goto(mobileUrl, { waitUntil: 'networkidle', timeout: 30000 });
+    await page.waitForTimeout(2000);
 
-    // 获取文章内容
-    const content = await page.evaluate(() => {
-      const article = document.querySelector('article');
-      if (article) {
-        return article.innerText;
-      }
-      // 备用方案
-      const main = document.querySelector('main');
-      if (main) {
-        return main.innerText;
-      }
-      return '';
+    const result = await page.evaluate(() => {
+      const textEl = document.querySelector('.weibo-text');
+      const authorEl = document.querySelector('.nick-name') || document.querySelector('.name');
+      const text = textEl ? textEl.innerText : (document.querySelector('article')?.innerText || document.querySelector('main')?.innerText || '');
+      const author = authorEl ? authorEl.innerText : '';
+      return { text, author };
     });
 
-    if (content && content.length > 50) {
-      return content;
+    if (result.text && result.text.length > 10) {
+      return {
+        text: `标题: ${result.author} 的微博\n\n作者: ${result.author}\n\n内容: ${result.text.slice(0, 8000)}`,
+        originalText: result.text.slice(0, 8000),
+      };
     }
     return null;
   } catch (error) {
