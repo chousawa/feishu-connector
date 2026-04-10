@@ -30,6 +30,8 @@ export async function fetchPageContent(url) {
         return await fetch36kr(url);
       case "微博":
         return await fetchWeibo(url);
+      case "小宇宙":
+        return await fetchXiaoyuzhou(url);
       default:
         return await fetchGenericPage(url);
     }
@@ -368,6 +370,50 @@ async function fetchWeibo(url) {
   } catch (error) {
     return `标题: 微博\n\n内容: 链接: ${url}\n\n备注: 微博内容获取失败: ${error.message}`;
   }
+}
+
+/**
+ * 获取小宇宙播客内容
+ */
+async function fetchXiaoyuzhou(url) {
+  const response = await axios.get(url, {
+    timeout: 15000,
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    },
+  });
+
+  const html = response.data;
+
+  // 优先从 JSON-LD 提取结构化数据
+  let title = "", author = "", description = "";
+  const jsonLdMatch = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/i);
+  if (jsonLdMatch) {
+    try {
+      const data = JSON.parse(jsonLdMatch[1]);
+      title = data.name || "";
+      description = data.description || "";
+      // 播客节目主播在 partOfSeries 或 author
+      author = data.author?.name || data.partOfSeries?.name || "";
+    } catch (e) {
+      // 忽略
+    }
+  }
+
+  // fallback：og 标签
+  if (!title) {
+    const ogTitle = html.match(/<meta[^>]*property="og:title"[^>]*content="([^"]+)"/i);
+    title = ogTitle ? ogTitle[1].trim() : "小宇宙播客";
+  }
+  if (!description) {
+    const ogDesc = html.match(/<meta[^>]*property="og:description"[^>]*content="([^"]+)"/i);
+    description = ogDesc ? ogDesc[1].trim() : "";
+  }
+
+  return {
+    text: `标题: ${title}\n\n播客: ${author}\n\n简介:\n${description.slice(0, 8000)}`,
+    originalText: description.slice(0, 8000),
+  };
 }
 
 /**
