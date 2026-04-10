@@ -3,7 +3,11 @@
  * 自动获取链接的页面内容
  */
 import axios from "axios";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { getPlatform } from "./linkParser.js";
+
+const execFileAsync = promisify(execFile);
 
 /**
  * 获取网页内容
@@ -86,7 +90,69 @@ async function fetchWechatArticle(url) {
 }
 
 /**
- * 获取小红书内容
+ * 用 wanyi-watermark 解析小红书视频直链
+ */
+async function getXhsVideoUrl(url) {
+  const python = process.platform === "darwin" ? "python3.12" : "python3";
+  const { stdout } = await execFileAsync(python, [
+    "-m", "douyin_mcp_server.xiaohongshu_processor", url
+  ], { timeout: 20000 });
+  const data = JSON.parse(stdout.trim());
+  return { videoUrl: data.url, title: data.title };
+}
+
+/**
+ * 用阿里云百炼 paraformer-v2 转录视频字幕
+ */
+async function transcribeWithDashscope(videoUrl) {
+  const { getConfig } = await import("./feishu.js");
+  const config = getConfig();
+  const apiKey = config.dashscope?.api_key;
+  if (!apiKey) throw new Error("dashscope api_key 未配置");
+
+  // 提交异步转录任务
+  const submitRes = await axios.post(
+    "https://dashscope.aliyuncs.com/api/v1/services/audio/asr/transcription",
+    {
+      model: "paraformer-v2",
+      input: { file_urls: [videoUrl] },
+      parameters: { language_hints: ["zh"] },
+    },
+    {
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "X-DashScope-Async": "enable",
+      },
+      timeout: 15000,
+    }
+  );
+
+  const taskId = submitRes.data?.output?.task_id;
+  if (!taskId) throw new Error("提交转录任务失败");
+
+  // 轮询任务状态，最多等60秒
+  for (let i = 0; i < 12; i++) {
+    await new Promise(r => setTimeout(r, 5000));
+    const pollRes = await axios.get(
+      `https://dashscope.aliyuncs.com/api/v1/tasks/${taskId}`,
+      { headers: { "Authorization": `Bearer ${apiKey}` }, timeout: 10000 }
+    );
+    const status = pollRes.data?.output?.task_status;
+    if (status === "SUCCEEDED") {
+      const transcriptionUrl = pollRes.data?.output?.results?.[0]?.transcription_url;
+      if (!transcriptionUrl) throw new Error("未获取到转录结果URL");
+      const resultRes = await axios.get(transcriptionUrl, { timeout: 10000 });
+      const text = resultRes.data?.transcripts?.[0]?.text || "";
+      return text;
+    }
+    if (status === "FAILED") throw new Error("转录任务失败");
+  }
+  throw new Error("转录超时");
+}
+
+/**
+ * 获取小红书内容（视频走转录，图文走抓取）
  */
 async function fetchXiaohongshu(url) {
   const response = await axios.get(url, {
@@ -102,23 +168,23 @@ async function fetchXiaohongshu(url) {
   const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
   const title = titleMatch ? titleMatch[1].trim() : "小红书笔记";
 
-  // 小红书内容通常是 JSON 嵌入在页面中
-  const jsonMatch = html.match(/window\.__INITIAL_STATE__\s*=\s*({[\s\S]*?});/i);
   let content = "";
-
   let author = "";
+
+  // 解析页面数据
+  const jsonMatch = html.match(/window\.__INITIAL_STATE__\s*=\s*({[\s\S]*?});/i);
+  let noteType = "normal";
   if (jsonMatch) {
     try {
       const data = JSON.parse(jsonMatch[1]);
-      // 尝试提取笔记内容
       if (data.note && data.note.noteDetailMap) {
         const noteData = Object.values(data.note.noteDetailMap)[0];
         if (noteData && noteData.note) {
+          noteType = noteData.note.type || "normal";
           content = noteData.note.title + "\n" + (noteData.note.desc || "");
           author = noteData.note.user?.nickname || noteData.note.user?.nickName || noteData.note.user?.name || "";
         }
       }
-      // 顶层 user 对象（xhslink 短链重定向后的结构）
       if (!author && data.user && data.user.nickname) {
         author = data.user.nickname;
       }
@@ -127,14 +193,33 @@ async function fetchXiaohongshu(url) {
     }
   }
 
-  // 兜底：直接从 HTML 正则提取 nickname
   if (!author) {
     const nicknameMatch = html.match(/"nickname"\s*:\s*"([^"]+)"/);
     if (nicknameMatch) author = nicknameMatch[1];
   }
 
+  // 视频笔记：用百炼转录获取字幕
+  const isVideo = noteType === "video" || html.includes('"type":"video"') || /<video/i.test(html);
+  if (isVideo) {
+    try {
+      console.log("   🎬 检测到视频笔记，开始转录...");
+      const { videoUrl } = await getXhsVideoUrl(url);
+      console.log("   📹 获取视频直链成功，提交转录任务...");
+      const transcript = await transcribeWithDashscope(videoUrl);
+      if (transcript && transcript.length > 10) {
+        console.log("   ✅ 转录成功");
+        return {
+          text: `标题: ${title}\n\n作者: ${author}\n\n视频字幕:\n${transcript.slice(0, 8000)}`,
+          transcript,
+        };
+      }
+    } catch (e) {
+      console.error(`   ⚠️ 视频转录失败，降级为图文抓取: ${e.message}`);
+    }
+  }
+
+  // 图文笔记或转录失败：用文字内容
   if (!content || content.length < 10) {
-    // 备用方案：提取 meta 描述
     const descMatch = html.match(/<meta[^>]*name="description"[^>]*content="([^"]+)"/i);
     content = descMatch ? descMatch[1] : "";
   }

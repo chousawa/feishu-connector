@@ -8,4 +8,6 @@ content.json
 config.json
 11
 chats/
+notes/
 .playwright-mcp/
+CLAUDE.md

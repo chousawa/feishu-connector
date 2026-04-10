@@ -101,6 +101,7 @@ async function runAutoProcess() {
 
   try {
     await createField("方向", "text");
+    await createField("视频原文", "text");
 
     // 优先使用队列中的链接
     let queueLinks = [...messageQueue];
@@ -155,6 +156,13 @@ async function runAutoProcess() {
           content = await fetchPageContent(link.url);
         }
 
+        // 兼容返回对象（视频转录）和字符串（图文）
+        let transcript = "";
+        if (content && typeof content === "object") {
+          transcript = content.transcript || "";
+          content = content.text;
+        }
+
         // 检查是否成功获取到内容
         if (!content || content.includes("获取失败") || content.includes("解析失败") || content.length < 20) {
           console.log(`   ⏭️  跳过（无法获取内容）: ${link.url}`);
@@ -178,6 +186,7 @@ async function runAutoProcess() {
           source: link.platform,
           topics: analysis.direction,
           summary: analysis.summary,
+          transcript,
           priority: analysis.relevance,
           status: "未读",
         };
