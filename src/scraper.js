@@ -86,7 +86,10 @@ async function fetchWechatArticle(url) {
     author = nicknameMatch[1].trim();
   }
 
-  return `标题: ${title}\n\n作者: ${author}\n\n内容: ${content.slice(0, 8000)}`;
+  return {
+    text: `标题: ${title}\n\n作者: ${author}\n\n内容: ${content.slice(0, 8000)}`,
+    originalText: content.slice(0, 8000),
+  };
 }
 
 /**
