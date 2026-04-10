@@ -102,6 +102,7 @@ async function runAutoProcess() {
   try {
     await createField("方向", "text");
     await createField("视频原文", "text");
+    await createField("帖子原文", "text");
 
     // 优先使用队列中的链接
     let queueLinks = [...messageQueue];
@@ -156,10 +157,12 @@ async function runAutoProcess() {
           content = await fetchPageContent(link.url);
         }
 
-        // 兼容返回对象（视频转录）和字符串（图文）
+        // 兼容返回对象（视频转录/小红书图文）和字符串
         let transcript = "";
+        let originalText = "";
         if (content && typeof content === "object") {
           transcript = content.transcript || "";
+          originalText = content.originalText || "";
           content = content.text;
         }
 
@@ -187,6 +190,7 @@ async function runAutoProcess() {
           topics: analysis.direction,
           summary: analysis.summary,
           transcript,
+          originalText,
           priority: analysis.relevance,
           status: "未读",
         };

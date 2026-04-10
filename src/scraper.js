@@ -198,6 +198,12 @@ async function fetchXiaohongshu(url) {
     if (nicknameMatch) author = nicknameMatch[1];
   }
 
+  // 图文笔记或转录失败：用文字内容
+  if (!content || content.length < 10) {
+    const descMatch = html.match(/<meta[^>]*name="description"[^>]*content="([^"]+)"/i);
+    content = descMatch ? descMatch[1] : "";
+  }
+
   // 视频笔记：用百炼转录获取字幕
   const isVideo = noteType === "video" || html.includes('"type":"video"') || /<video/i.test(html);
   if (isVideo) {
@@ -211,6 +217,7 @@ async function fetchXiaohongshu(url) {
         return {
           text: `标题: ${title}\n\n作者: ${author}\n\n视频字幕:\n${transcript.slice(0, 8000)}`,
           transcript,
+          originalText: content.slice(0, 8000),
         };
       }
     } catch (e) {
@@ -218,13 +225,10 @@ async function fetchXiaohongshu(url) {
     }
   }
 
-  // 图文笔记或转录失败：用文字内容
-  if (!content || content.length < 10) {
-    const descMatch = html.match(/<meta[^>]*name="description"[^>]*content="([^"]+)"/i);
-    content = descMatch ? descMatch[1] : "";
-  }
-
-  return `标题: ${title}\n\n作者: ${author}\n\n内容: ${content.slice(0, 8000)}`;
+  return {
+    text: `标题: ${title}\n\n作者: ${author}\n\n内容: ${content.slice(0, 8000)}`,
+    originalText: content.slice(0, 8000),
+  };
 }
 
 /**

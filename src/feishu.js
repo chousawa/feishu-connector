@@ -158,6 +158,7 @@ export async function writeToBitable(record) {
     "方向": record.topics || "",
     "内容概括": record.summary || "",
     "视频原文": record.transcript || "",
+    "帖子原文": record.originalText || "",
     "优先级": String(record.priority || 3),
     "状态": record.status || "未读",
     "添加时间": new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 16).replace("T", " "),
