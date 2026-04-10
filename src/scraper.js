@@ -90,7 +90,7 @@ async function fetchWechatArticle(url) {
 }
 
 /**
- * 用 wanyi-watermark 解析小红书视频直链
+ * 用 douyin_mcp_server 解析小红书视频直链
  */
 async function getXhsVideoUrl(url) {
   const python = process.platform === "darwin" ? "python3.12" : "python3";
@@ -99,6 +99,25 @@ async function getXhsVideoUrl(url) {
   ], { timeout: 20000 });
   const data = JSON.parse(stdout.trim());
   return { videoUrl: data.url, title: data.title };
+}
+
+/**
+ * 用 douyin_mcp_server 解析小红书图文笔记，获取正文和标题
+ */
+async function getXhsImageNote(url) {
+  const python = process.platform === "darwin" ? "python3.12" : "python3";
+  const script = `
+from douyin_mcp_server.xiaohongshu_processor import XiaohongshuProcessor
+import json, sys
+p = XiaohongshuProcessor()
+try:
+    d = p.parse_image_note(sys.argv[1])
+    print(json.dumps({"title": d["title"], "desc": d["desc"]}, ensure_ascii=False))
+except Exception as e:
+    print(json.dumps({"error": str(e)}, ensure_ascii=False))
+`;
+  const { stdout } = await execFileAsync(python, ["-c", script, url], { timeout: 20000 });
+  return JSON.parse(stdout.trim());
 }
 
 /**
@@ -198,10 +217,26 @@ async function fetchXiaohongshu(url) {
     if (nicknameMatch) author = nicknameMatch[1];
   }
 
-  // 图文笔记或转录失败：用文字内容
+  // 图文笔记或 HTML 解析失败：尝试 meta description，再尝试 Python 解析
   if (!content || content.length < 10) {
     const descMatch = html.match(/<meta[^>]*name="description"[^>]*content="([^"]+)"/i);
     content = descMatch ? descMatch[1] : "";
+  }
+
+  // 如果仍然没有内容，用 Python 解析图文笔记（绕过服务器 IP 反爬）
+  if (!content || content.length < 10) {
+    try {
+      const noteData = await getXhsImageNote(url);
+      if (!noteData.error && noteData.desc) {
+        content = (noteData.title ? noteData.title + "\n" : "") + noteData.desc;
+        if (!author && noteData.title) {
+          // title 来自笔记本身，不是作者
+        }
+        console.log("   📝 Python 解析图文成功，内容长度:", content.length);
+      }
+    } catch (e) {
+      console.error(`   ⚠️ Python 图文解析失败: ${e.message}`);
+    }
   }
 
   // 视频笔记：用百炼转录获取字幕
