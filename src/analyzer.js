@@ -40,8 +40,9 @@ ${truncatedContent}
 只返回JSON，不要其他内容。`;
 
   try {
+    const baseUrl = miniMaxConfig.base_url || "https://api.minimaxi.com/anthropic";
     const response = await axios.post(
-      `${miniMaxConfig.base_url}/v1/messages`,
+      `${baseUrl}/v1/messages`,
       {
         model: miniMaxConfig.model,
         messages: [

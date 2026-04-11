@@ -7,6 +7,7 @@
 - 📡 实时监听飞书群消息，自动提取链接
 - 🤖 AI 分析内容（标题、摘要、分类、优先级）
 - 📊 自动写入飞书多维表格
+- 🎬 小红书视频自动转录，写入"视频原文"列
 - 🔄 支持手动触发收集
 - ☁️ 支持服务器部署（PM2）
 
@@ -87,6 +88,9 @@ cp config.example.json config.json
     "app_token": "xxxxx",
     "table_id": "xxxxx"
   },
+  "dashscope": {
+    "api_key": "sk-xxxxx"
+  },
   "minimax": {
     "api_key": "your-minimax-api-key",
     "base_url": "https://api.minimaxi.com/anthropic",
@@ -98,7 +102,8 @@ cp config.example.json config.json
 **配置说明：**
 - `feishu.app_id` / `app_secret` - 在[飞书开放平台](https://open.feishu.cn/)应用详情的凭证与基础信息获取
 - `feishu.chat_id` - 群设置中的群 ID（在飞书群设置底部会话ID）
-- `bitable.app_token` / `table_id` - 多维表格 URL 中的参数（示例：`https://xxx.feishu.cn/bitable/appTokenxxxxx?table_id=tblxxxxx`，`appTokenxxxxx` 是 app_token`tblxxxxx` 是 table_id）
+- `bitable.app_token` / `table_id` - 多维表格 URL 中的参数（示例：`https://xxx.feishu.cn/bitable/appTokenxxxxx?table_id=tblxxxxx`，`appTokenxxxxx` 是 app_token，`tblxxxxx` 是 table_id）
+- `dashscope.api_key` - 在[阿里云百炼](https://bailian.console.aliyun.com/)获取，用于小红书视频转录（模型：paraformer-v2），新用户有 36000 秒免费额度
 - `minimax.api_key` - 在 [MiniMax 开放平台](https://platform.minimaxi.com/) 获取
 
 ### 5. 运行
@@ -119,16 +124,41 @@ npm run trigger
 4. 机器人会自动分析并写入表格
 
 **支持的链接平台：**
-- 小红书
+- 小红书（图文笔记抓取文字；视频笔记自动转录字幕写入"视频原文"列）
 - 微博
 - 公众号（微信）
 - 小宇宙
 
-注意：下载后在本地使用，需要保持电脑打开，借助AI运行监听的程序，才能触发；如果想不限时间地点使用，需要将程序部署到云服务器上
+注意：下载后在本地使用，需要保持电脑打开且联网，借助AI运行监听的程序，才能触发；如果想不限时间地点使用，需要将程序部署到云服务器上
+
+**本地快捷启动：** 在 Finder 中找到项目文件夹，双击 `启动飞书监听.command` 即可自动打开终端并启动服务。关闭终端窗口即停止服务。
 
 **触发关键词：** `收集`、`抓取`、`处理`、`开始`
 
 **停止服务：** 发送"停止"
+
+## 小红书视频转录
+
+视频笔记走以下链路自动处理：
+
+1. **解析视频直链**：使用 [wanyi-watermark](https://github.com/Ryan7t/wanyi-watermark) 从分享链接解析出 mp4 直链，无需登录 cookie
+2. **云端转录**：将直链传给阿里云百炼 paraformer-v2，约 17 秒完成（150 秒视频），转录结果写入表格"视频原文"列
+3. **降级兜底**：转录失败时自动降级为抓取图文内容
+
+**依赖安装（服务器/本地均需执行）：**
+
+```bash
+pip3 install wanyi-watermark
+```
+
+> Mac 本地运行注意：Node.js 调用的 python 版本需与 wanyi-watermark 安装的版本一致。代码中通过 `process.platform === "darwin"` 自动切换为 `python3.12`（Mac）或 `python3`（Linux）。如果本地 python 版本不同，需修改 `scraper.js` 中的 `python3.12`。
+
+**config.json 更新后需手动同步到服务器**（config.json 在 .gitignore 中不会自动推送）：
+
+```bash
+# 在服务器上直接编辑
+ssh feishu 'nano /home/admin/feishu-connector/config.json'
+```
 
 ## 服务器部署
 
@@ -184,6 +214,12 @@ A: 确保先发链接，再发"收集"命令。或者使用服务器部署保持
 
 **Q: AI 分析失败？**
 A: 检查 MiniMax API Key 是否有效。
+
+**Q: 小红书视频原文为空？**
+A: 检查以下几点：
+1. 服务器上是否安装了 `wanyi-watermark`：`pip3 install wanyi-watermark`
+2. 服务器 `config.json` 是否有 `dashscope.api_key`（config.json 不随 git 推送，需手动更新）
+3. 查看日志：`pm2 logs feishu-collector --lines 30 --nostream`，看是否有 `⚠️ 视频转录失败` 的报错
 
 ## 许可证
 
