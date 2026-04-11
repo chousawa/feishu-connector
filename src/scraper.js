@@ -261,12 +261,20 @@ async function fetchXiaohongshu(url) {
         };
       }
     } catch (e) {
-      console.error(`   ⚠️ 视频转录失败，降级为图文抓取: ${e.message}`);
+      console.error(`   ⚠️ 视频转录失败: ${e.message}`);
     }
+    // 视频转录失败或结果为空
+    return {
+      text: `标题: ${title}\n\n作者: ${author}\n\n内容: ${content.slice(0, 8000)}`,
+      transcript: "（缺少视频原文）",
+      originalText: content.slice(0, 8000),
+    };
   }
 
+  // 图文笔记
   return {
     text: `标题: ${title}\n\n作者: ${author}\n\n内容: ${content.slice(0, 8000)}`,
+    transcript: "（图片）",
     originalText: content.slice(0, 8000),
   };
 }
