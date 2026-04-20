@@ -359,10 +359,10 @@ async function fetchWeibo(url) {
       return `标题: ${userName} 的微博\n\n作者: ${userName}\n\n发布时间: ${createdAt}\n\n内容: ${plainText.slice(0, 8000)}`;
     }
 
-    // 如果API失败，返回基本信息
-    return `标题: 微博\n\n内容: 链接: ${url}\n\n备注: 微博有反爬虫机制，内容获取失败。请手动复制内容。`;
+    return null;
   } catch (error) {
-    return `标题: 微博\n\n内容: 链接: ${url}\n\n备注: 微博内容获取失败: ${error.message}`;
+    return null;
+  }
   }
 }
 

@@ -62,15 +62,22 @@ async function fetchWeiboWithPlaywright(url) {
     const { chromium } = await import('playwright');
     browser = await chromium.launch({ headless: true });
     const page = await browser.newPage();
-    // 转为移动端 URL
     const mobileUrl = url.replace('weibo.com/', 'm.weibo.cn/detail/').replace(/\/(\d+)\/(\w+)/, '/$2');
+    console.log(`   Playwright访问: ${mobileUrl}`);
     await page.goto(mobileUrl, { waitUntil: 'networkidle', timeout: 30000 });
-    await page.waitForTimeout(2000);
+    // 等内容加载
+    await page.waitForTimeout(3000);
+    // 尝试多个选择器
     const result = await page.evaluate(() => {
-      const textEl = document.querySelector('.weibo-text');
-      const text = textEl ? textEl.innerText : (document.querySelector('article')?.innerText || document.querySelector('main')?.innerText || '');
-      return { text };
+      const textEl = document.querySelector('.weibo-text') ||
+                     document.querySelector('[node-type="feed_content"]') ||
+                     document.querySelector('article') ||
+                     document.querySelector('main');
+      const text = textEl?.innerText?.trim() ||
+                   document.body.innerText.match(/微博正文[\s\S]*?(?=转发|评论|$)/)?.[0]?.trim() || '';
+      return { text: text || document.body.innerText.slice(0, 100) };
     });
+    console.log(`   Playwright抓到 ${result.text.length} 字`);
     if (result.text && result.text.length > 10) {
       return { text: result.text.slice(0, 8000), originalText: result.text.slice(0, 8000) };
     }
@@ -142,7 +149,9 @@ async function runAutoProcess() {
         let content;
         if (link.platform === "微博") {
           content = await fetchPageContent(link.url);
-          if (!content || (typeof content === "string" && content.length < 20)) {
+          const contentType = typeof content === "object" ? "object" : content ? content.length + "字" : "null";
+          console.log(`   微博直接请求: ${contentType}`);
+          if (!content || content.length < 20) {
             console.log("   微博直接请求失败，尝试 Playwright...");
             content = await fetchWeiboWithPlaywright(link.url);
           }
