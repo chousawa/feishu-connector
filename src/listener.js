@@ -147,13 +147,9 @@ async function runAutoProcess() {
 
         // 根据平台选择获取方式
         let content;
-        console.log(`   DEBUG: link.platform="${link.platform}" === "微博"? ${link.platform === "微博"}`);
         if (link.platform === "微博") {
           content = await fetchPageContent(link.url);
-          console.log(`   DEBUG: fetchPageContent 返回 ${content === null ? 'null' : typeof content}`);
-          // 微博直接用 Playwright 兜底，不需要检查返回值
           content = await fetchWeiboWithPlaywright(link.url);
-          console.log(`   DEBUG: fetchWeiboWithPlaywright 返回 ${content === null ? 'null' : '有值 ' + content.text?.length + '字'}`);
         } else {
           content = await fetchPageContent(link.url);
         }
