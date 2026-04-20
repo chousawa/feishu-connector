@@ -156,8 +156,8 @@ async function runAutoProcess() {
           content = content.text;
         }
 
-        // 检查是否成功获取到内容
-        if (!content || content.includes("获取失败") || content.includes("解析失败") || content.length < 20) {
+        // content 现在是字符串或 null。只检查 null 和长度，不检查内容文本
+        if (!content || content.length < 20) {
           console.log(`   ⏭️  跳过（无法获取内容）: ${link.url}`);
           skipCount++;
           continue;
