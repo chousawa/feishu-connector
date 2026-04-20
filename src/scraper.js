@@ -42,25 +42,41 @@ export async function fetchPageContent(url) {
 }
 
 /**
- * 获取公众号文章内容（使用 Jina Reader 绕过反爬）
+ * 获取公众号文章内容（axios 直接请求）
  */
 async function fetchWechatArticle(url) {
-  const jinaUrl = `https://r.jina.ai/${url}`;
-  const response = await axios.get(jinaUrl, {
-    timeout: 30000,
+  const response = await axios.get(url, {
+    timeout: 15000,
     headers: {
-      "Accept": "text/plain",
-      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "Cookie": "wapsso=1; wapsso_cache=1",
     },
   });
 
-  const text = typeof response.data === "string" ? response.data : JSON.stringify(response.data);
-  const titleMatch = text.match(/^Title:\s*(.+)/m);
+  const html = response.data;
+
+  const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
   const title = titleMatch ? titleMatch[1].trim() : "公众号文章";
 
+  // 提取正文（id="js_content"）
+  let content = "";
+  const contentMatch = html.match(/id="js_content"[^>]*>([\s\S]*?)<\/div>/i);
+  if (contentMatch) {
+    content = cleanHtml(contentMatch[1]);
+  }
+
+  // 提取作者
+  let author = "";
+  const authorMatch = html.match(/var\s+nickname\s*=\s*"([^"]+)"/) ||
+                      html.match(/"nick_name"\s*:\s*"([^"]+)"/) ||
+                      html.match(/id="js_name"[^>]*>([^<]+)</);
+  if (authorMatch) {
+    author = authorMatch[1].trim();
+  }
+
   return {
-    text: text.slice(0, 8000),
-    originalText: text.slice(0, 8000),
+    text: `标题: ${title}\n\n作者: ${author}\n\n内容: ${content.slice(0, 8000)}`,
+    originalText: content.slice(0, 8000),
   };
 }
 

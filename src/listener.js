@@ -55,24 +55,27 @@ async function sendReply(chatId, text) {
   }
 }
 
-// 使用 Jina Reader 获取微博内容（兜底方案）
-async function fetchWeiboWithJina(url) {
+// 微博使用 scraper 的 fetchWeibo（axios 移动端 API）
+async function fetchWeiboWithApi(url) {
   try {
     const { default: axios } = await import('axios');
-    const jinaUrl = `https://r.jina.ai/${url}`;
-    const response = await axios.get(jinaUrl, {
-      timeout: 30000,
-      headers: { "Accept": "text/plain" },
+    const match = url.match(/weibo\.com\/\d+\/([a-zA-Z0-9]+)/);
+    if (!match) return null;
+    const weiboId = match[1];
+    const response = await axios.get(`https://m.weibo.cn/statuses/show?id=${weiboId}`, {
+      timeout: 20000,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1",
+        "Referer": "https://m.weibo.cn/",
+      },
     });
-    let text = typeof response.data === "string" ? response.data : JSON.stringify(response.data);
-    // 去掉 Jina 开头的一行 Title 和 Description 标记
-    text = text.replace(/^Title: .*\n?/im, "").replace(/^Description: .*\n?/im, "").trim();
-    if (text && text.length > 20) {
+    if (response.data?.ok === 1 && response.data?.data) {
+      const text = response.data.data.text?.replace(/<[^>]+>/g, "") || "";
       return { text: text.slice(0, 8000), originalText: text.slice(0, 8000) };
     }
     return null;
   } catch (error) {
-    console.error(`   Jina获取微博失败: ${error.message}`);
+    console.error(`   微博API失败: ${error.message}`);
     return null;
   }
 }
@@ -137,8 +140,8 @@ async function runAutoProcess() {
         if (link.platform === "微博") {
           content = await fetchPageContent(link.url);
           if (!content || (typeof content === "string" && content.includes("获取失败"))) {
-            console.log("   微博API失败，尝试 Jina Reader...");
-            content = await fetchWeiboWithJina(link.url);
+            console.log("   微博API失败，尝试备用方案...");
+            content = await fetchWeiboWithApi(link.url);
           }
         } else {
           content = await fetchPageContent(link.url);
