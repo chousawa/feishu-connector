@@ -55,28 +55,31 @@ async function sendReply(chatId, text) {
   }
 }
 
-// 微博使用 scraper 的 fetchWeibo（axios 移动端 API）
-async function fetchWeiboWithApi(url) {
+// 使用 Playwright 获取微博内容
+async function fetchWeiboWithPlaywright(url) {
+  let browser;
   try {
-    const { default: axios } = await import('axios');
-    const match = url.match(/weibo\.com\/\d+\/([a-zA-Z0-9]+)/);
-    if (!match) return null;
-    const weiboId = match[1];
-    const response = await axios.get(`https://m.weibo.cn/statuses/show?id=${weiboId}`, {
-      timeout: 20000,
-      headers: {
-        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1",
-        "Referer": "https://m.weibo.cn/",
-      },
+    const { chromium } = await import('playwright');
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    // 转为移动端 URL
+    const mobileUrl = url.replace('weibo.com/', 'm.weibo.cn/detail/').replace(/\/(\d+)\/(\w+)/, '/$2');
+    await page.goto(mobileUrl, { waitUntil: 'networkidle', timeout: 30000 });
+    await page.waitForTimeout(2000);
+    const result = await page.evaluate(() => {
+      const textEl = document.querySelector('.weibo-text');
+      const text = textEl ? textEl.innerText : (document.querySelector('article')?.innerText || document.querySelector('main')?.innerText || '');
+      return { text };
     });
-    if (response.data?.ok === 1 && response.data?.data) {
-      const text = response.data.data.text?.replace(/<[^>]+>/g, "") || "";
-      return { text: text.slice(0, 8000), originalText: text.slice(0, 8000) };
+    if (result.text && result.text.length > 10) {
+      return { text: result.text.slice(0, 8000), originalText: result.text.slice(0, 8000) };
     }
     return null;
   } catch (error) {
-    console.error(`   微博API失败: ${error.message}`);
+    console.error(`   Playwright微博获取失败: ${error.message}`);
     return null;
+  } finally {
+    if (browser) await browser.close();
   }
 }
 
@@ -139,9 +142,9 @@ async function runAutoProcess() {
         let content;
         if (link.platform === "微博") {
           content = await fetchPageContent(link.url);
-          if (!content || (typeof content === "string" && content.includes("获取失败"))) {
-            console.log("   微博API失败，尝试备用方案...");
-            content = await fetchWeiboWithApi(link.url);
+          if (!content || (typeof content === "string" && content.length < 20)) {
+            console.log("   微博直接请求失败，尝试 Playwright...");
+            content = await fetchWeiboWithPlaywright(link.url);
           }
         } else {
           content = await fetchPageContent(link.url);
