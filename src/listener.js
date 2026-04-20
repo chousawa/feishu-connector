@@ -55,39 +55,25 @@ async function sendReply(chatId, text) {
   }
 }
 
-// 使用 Playwright 获取微博内容
-async function fetchWeiboWithPlaywright(url) {
-  let browser;
+// 使用 Jina Reader 获取微博内容（兜底方案）
+async function fetchWeiboWithJina(url) {
   try {
-    const { chromium } = await import('playwright');
-    browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage();
-
-    // 转换为移动端 URL（内容更完整）
-    const mobileUrl = url.replace('weibo.com/', 'm.weibo.cn/detail/').replace(/\/(\d+)\/(\w+)/, '/$2');
-    await page.goto(mobileUrl, { waitUntil: 'networkidle', timeout: 30000 });
-    await page.waitForTimeout(2000);
-
-    const result = await page.evaluate(() => {
-      const textEl = document.querySelector('.weibo-text');
-      const authorEl = document.querySelector('.nick-name') || document.querySelector('.name');
-      const text = textEl ? textEl.innerText : (document.querySelector('article')?.innerText || document.querySelector('main')?.innerText || '');
-      const author = authorEl ? authorEl.innerText : '';
-      return { text, author };
+    const { default: axios } = await import('axios');
+    const jinaUrl = `https://r.jina.ai/${url}`;
+    const response = await axios.get(jinaUrl, {
+      timeout: 30000,
+      headers: { "Accept": "text/plain" },
     });
-
-    if (result.text && result.text.length > 10) {
-      return {
-        text: `标题: ${result.author} 的微博\n\n作者: ${result.author}\n\n内容: ${result.text.slice(0, 8000)}`,
-        originalText: result.text.slice(0, 8000),
-      };
+    let text = typeof response.data === "string" ? response.data : JSON.stringify(response.data);
+    // 去掉 Jina 开头的一行 Title 和 Description 标记
+    text = text.replace(/^Title: .*\n?/im, "").replace(/^Description: .*\n?/im, "").trim();
+    if (text && text.length > 20) {
+      return { text: text.slice(0, 8000), originalText: text.slice(0, 8000) };
     }
     return null;
   } catch (error) {
-    console.error(`   Playwright获取失败: ${error.message}`);
+    console.error(`   Jina获取微博失败: ${error.message}`);
     return null;
-  } finally {
-    if (browser) await browser.close();
   }
 }
 
@@ -149,8 +135,11 @@ async function runAutoProcess() {
         // 根据平台选择获取方式
         let content;
         if (link.platform === "微博") {
-          console.log("   使用 Playwright 获取微博内容...");
-          content = await fetchWeiboWithPlaywright(link.url);
+          content = await fetchPageContent(link.url);
+          if (!content || (typeof content === "string" && content.includes("获取失败"))) {
+            console.log("   微博API失败，尝试 Jina Reader...");
+            content = await fetchWeiboWithJina(link.url);
+          }
         } else {
           content = await fetchPageContent(link.url);
         }

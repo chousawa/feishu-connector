@@ -8,7 +8,7 @@ const PLATFORM_PATTERNS = [
   { name: "小红书", pattern: /xiaohongshu\.com|xhslink\.com/i },
   { name: "微博", pattern: /weibo\.com|weibo\.cn|m\.weibo\.cn/i },
   { name: "公众号", pattern: /mp\.weixin\.qq\.com/i },
-  { name: "小宇宙", pattern: /xiaoyuzhou\.fm|xiaoyuzhouapp\.com/i },
+  { name: "小宇宙", pattern: /xiaoyuzhou\.fm|xiaoyuzhoufm\.com|xiaoyuzhouapp\.com/i },
   { name: "B站", pattern: /bilibili\.com|b23\.tv/i },
   { name: "抖音", pattern: /douyin\.com|aweme\.vivo\.com\.cn/i },
   { name: "知乎", pattern: /zhihu\.com|zhihu\.cn/i },

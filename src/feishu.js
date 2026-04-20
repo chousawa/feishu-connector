@@ -146,6 +146,38 @@ export async function getMessageContent(messageId) {
  * 写入多维表格记录
  * @param {Object} record 记录数据
  */
+/**
+ * 更新指定记录
+ * @param {string} recordId 记录 ID
+ * @param {Object} fields 字段数据
+ */
+export async function updateBitableRecord(recordId, fields) {
+  const cfg = getConfig();
+  const token = await getTenantAccessToken();
+
+  try {
+    const updateResp = await axios.put(
+      `https://open.feishu.cn/open-apis/bitable/v1/apps/${cfg.bitable.app_token}/tables/${cfg.bitable.table_id}/records/${recordId}`,
+      { fields },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    if (updateResp.data && updateResp.data.msg === "success") {
+      console.log(`✅ 成功更新记录: ${recordId}`);
+      return updateResp.data.data.record;
+    }
+    return null;
+  } catch (error) {
+    console.error("更新多维表格记录失败:", error.response?.data?.msg || error.message);
+    throw error;
+  }
+}
+
 export async function writeToBitable(record) {
   const cfg = getConfig();
   const token = await getTenantAccessToken();

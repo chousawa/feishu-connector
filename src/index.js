@@ -502,8 +502,10 @@ async function executeAutoFlow(chatId, topics) {
       }
 
       // 抓取内容
+      console.log(`   🔗 开始处理: ${link.url}`);
       const content = await fetchPageContent(link.url);
       if (!content) {
+        console.log(`   ⏭️  跳过（内容获取失败）: ${link.url}`);
         skipCount++;
         continue;
       }

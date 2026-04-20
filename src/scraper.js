@@ -42,55 +42,25 @@ export async function fetchPageContent(url) {
 }
 
 /**
- * 获取公众号文章内容
+ * 获取公众号文章内容（使用 Jina Reader 绕过反爬）
  */
 async function fetchWechatArticle(url) {
-  // 尝试直接获取
-  const response = await axios.get(url, {
-    timeout: 15000,
+  const jinaUrl = `https://r.jina.ai/${url}`;
+  const response = await axios.get(jinaUrl, {
+    timeout: 30000,
     headers: {
+      "Accept": "text/plain",
       "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      "Cookie": "wapsso=1; wapsso_cache=1",
     },
   });
 
-  // 公众号文章需要解析 HTML
-  const html = response.data;
-
-  // 提取标题
-  const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+  const text = typeof response.data === "string" ? response.data : JSON.stringify(response.data);
+  const titleMatch = text.match(/^Title:\s*(.+)/m);
   const title = titleMatch ? titleMatch[1].trim() : "公众号文章";
 
-  // 提取正文内容（尝试多种选择器）
-  let content = "";
-
-  // 尝试提取 id="js_content" 的内容
-  const contentMatch = html.match(/id="js_content"[^>]*>([\s\S]*?)<\/div>/i);
-  if (contentMatch) {
-    content = cleanHtml(contentMatch[1]);
-  }
-
-  // 如果没找到，尝试提取整个文章区域
-  if (!content || content.length < 50) {
-    const articleMatch = html.match(/<article[^>]*>([\s\S]*?)<\/article>/i);
-    if (articleMatch) {
-      content = cleanHtml(articleMatch[1]);
-    }
-  }
-
-  // 提取作者（公众号名）
-  let author = "";
-  const nicknameMatch = html.match(/var\s+nickname\s*=\s*"([^"]+)"/) ||
-                        html.match(/"nick_name"\s*:\s*"([^"]+)"/) ||
-                        html.match(/id="js_name"[^>]*>([^<]+)</) ||
-                        html.match(/<meta[^>]*name="author"[^>]*content="([^"]+)"/i);
-  if (nicknameMatch) {
-    author = nicknameMatch[1].trim();
-  }
-
   return {
-    text: `标题: ${title}\n\n作者: ${author}\n\n内容: ${content.slice(0, 8000)}`,
-    originalText: content.slice(0, 8000),
+    text: text.slice(0, 8000),
+    originalText: text.slice(0, 8000),
   };
 }
 
@@ -381,47 +351,50 @@ async function fetchWeibo(url) {
 }
 
 /**
- * 获取小宇宙播客内容
+ * 获取小宇宙播客内容（使用 Playwright 确保拿到完整渲染后的页面）
  */
 async function fetchXiaoyuzhou(url) {
-  const response = await axios.get(url, {
-    timeout: 15000,
-    headers: {
-      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    },
+  const { chromium } = await import("playwright");
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({
+    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
   });
+  const page = await context.newPage();
 
-  const html = response.data;
+  try {
+    await page.goto(url, { waitUntil: "networkidle", timeout: 20000 });
 
-  // 优先从 JSON-LD 提取结构化数据
-  let title = "", author = "", description = "";
-  const jsonLdMatch = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/i);
-  if (jsonLdMatch) {
-    try {
-      const data = JSON.parse(jsonLdMatch[1]);
-      title = data.name || "";
-      description = data.description || "";
-      // 播客节目主播在 partOfSeries 或 author
-      author = data.author?.name || data.partOfSeries?.name || "";
-    } catch (e) {
-      // 忽略
-    }
+    const result = await page.evaluate(() => {
+      const title = document.querySelector('meta[property="og:title"]')?.content ||
+                    document.title ||
+                    "小宇宙播客";
+      const description = document.querySelector('meta[property="og:description"]')?.content ||
+                          document.querySelector('meta[name="description"]')?.content ||
+                          "";
+      // 尝试从 JSON-LD 获取作者
+      let author = "";
+      const jsonLd = document.querySelector('script[type="application/ld+json"]')?.textContent;
+      if (jsonLd) {
+        try {
+          const data = JSON.parse(jsonLd);
+          author = data.author?.name || data.partOfSeries?.name || "";
+        } catch (e) {
+          // 忽略
+        }
+      }
+      return { title, description, author };
+    });
+
+    await browser.close();
+
+    return {
+      text: `标题: ${result.title}\n\n播客: ${result.author}\n\n简介:\n${result.description.slice(0, 8000)}`,
+      originalText: result.description.slice(0, 8000),
+    };
+  } catch (error) {
+    await browser.close();
+    throw error;
   }
-
-  // fallback：og 标签
-  if (!title) {
-    const ogTitle = html.match(/<meta[^>]*property="og:title"[^>]*content="([^"]+)"/i);
-    title = ogTitle ? ogTitle[1].trim() : "小宇宙播客";
-  }
-  if (!description) {
-    const ogDesc = html.match(/<meta[^>]*property="og:description"[^>]*content="([^"]+)"/i);
-    description = ogDesc ? ogDesc[1].trim() : "";
-  }
-
-  return {
-    text: `标题: ${title}\n\n播客: ${author}\n\n简介:\n${description.slice(0, 8000)}`,
-    originalText: description.slice(0, 8000),
-  };
 }
 
 /**
