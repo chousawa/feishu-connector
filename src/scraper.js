@@ -363,7 +363,6 @@ async function fetchWeibo(url) {
   } catch (error) {
     return null;
   }
-  }
 }
 
 /**
