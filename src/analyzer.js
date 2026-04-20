@@ -29,7 +29,7 @@ ${truncatedContent}
 
 请以JSON格式返回分析结果，包含以下字段：
 {
-  "title": "标题（如果无法提取则用'未知标题'）",
+  "title": "必须从内容中提取或生成一个简短标题（15字以内），微博/帖子类内容可用正文开头几个字加省略号，不要用'未知标题'或'无标题'",
   "author": "作者或发布者名称（如果无法提取则用空字符串）",
   "summary": "内容概括（50-200字）",
   "relevance": "与关注方向的相关度评分（1-5分，5分最高）",
@@ -94,7 +94,7 @@ ${truncatedContent}
         const result = JSON.parse(jsonStr.trim());
 
         return {
-          title: result.title || "未知标题",
+          title: result.title || truncatedContent.slice(0, 15) + (truncatedContent.length > 15 ? "..." : ""),
           author: result.author || "",
           summary: result.summary || "",
           relevance: parseInt(result.relevance) || 3,
@@ -104,7 +104,7 @@ ${truncatedContent}
       } catch (parseError) {
         console.error("解析JSON失败:", parseError.message);
         // 尝试从文本中提取标题
-        let title = "内容分析";
+        let title = truncatedContent.slice(0, 15) + (truncatedContent.length > 15 ? "..." : "");
         let summary = resultText.slice(0, 300);
 
         // 尝试匹配标题
