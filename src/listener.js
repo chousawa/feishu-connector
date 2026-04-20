@@ -149,12 +149,8 @@ async function runAutoProcess() {
         let content;
         if (link.platform === "微博") {
           content = await fetchPageContent(link.url);
-          const contentType = typeof content === "object" ? "object" : content ? content.length + "字" : "null";
-          console.log(`   微博直接请求: ${contentType}`);
-          if (!content || content.length < 20) {
-            console.log("   微博直接请求失败，尝试 Playwright...");
-            content = await fetchWeiboWithPlaywright(link.url);
-          }
+          // 微博直接用 Playwright 兜底，不需要检查返回值
+          content = await fetchWeiboWithPlaywright(link.url);
         } else {
           content = await fetchPageContent(link.url);
         }
