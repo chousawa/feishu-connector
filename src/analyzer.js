@@ -61,7 +61,7 @@ ${truncatedContent}
       {
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": miniMaxConfig.api_key,
+          "Authorization": `Bearer ${miniMaxConfig.api_key}`,
         },
         timeout: 60000,
       }
