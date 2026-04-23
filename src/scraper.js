@@ -103,12 +103,57 @@ import json, sys
 p = XiaohongshuProcessor()
 try:
     d = p.parse_image_note(sys.argv[1])
-    print(json.dumps({"title": d["title"], "desc": d["desc"]}, ensure_ascii=False))
+    print(json.dumps({"title": d["title"], "desc": d["desc"], "images": d.get("images", [])}, ensure_ascii=False))
 except Exception as e:
     print(json.dumps({"error": str(e)}, ensure_ascii=False))
 `;
   const { stdout } = await execFileAsync(python, ["-c", script, url], { timeout: 20000 });
   return JSON.parse(stdout.trim());
+}
+
+/**
+ * 用百炼 qwen-vl-ocr-latest 对图片做 OCR，提取文字
+ */
+async function ocrImagesWithDashscope(imageUrls) {
+  const { getConfig } = await import("./feishu.js");
+  const config = getConfig();
+  const apiKey = config.dashscope?.api_key;
+  if (!apiKey || !imageUrls?.length) return "";
+
+  const results = [];
+  for (const imgUrl of imageUrls.slice(0, 5)) {
+    try {
+      const res = await axios.post(
+        "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+        {
+          model: "qwen-vl-ocr-latest",
+          messages: [{
+            role: "user",
+            content: [
+              {
+                type: "image_url",
+                image_url: { url: imgUrl },
+                min_pixels: 3072,
+                max_pixels: 1024 * 1024,
+              }
+            ],
+          }],
+        },
+        {
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          timeout: 30000,
+        }
+      );
+      const text = res.data?.choices?.[0]?.message?.content || "";
+      if (text.trim()) results.push(text.trim());
+    } catch (e) {
+      console.warn(`   ⚠️ OCR 第 ${results.length + 1} 张图片失败: ${e.message}`);
+    }
+  }
+  return results.join("\n\n");
 }
 
 /**
@@ -214,19 +259,26 @@ async function fetchXiaohongshu(url) {
     content = descMatch ? descMatch[1] : "";
   }
 
-  // 如果仍然没有内容，用 Python 解析图文笔记（绕过服务器 IP 反爬）
+  // 用 Python 解析图文笔记，同时拿到图片 URL 列表（只调用一次）
+  let xhsImages = [];
   if (!content || content.length < 10) {
     try {
       const noteData = await getXhsImageNote(url);
       if (!noteData.error && noteData.desc) {
         content = (noteData.title ? noteData.title + "\n" : "") + noteData.desc;
-        if (!author && noteData.title) {
-          // title 来自笔记本身，不是作者
-        }
         console.log("   📝 Python 解析图文成功，内容长度:", content.length);
       }
+      if (noteData.images?.length) xhsImages = noteData.images;
     } catch (e) {
       console.error(`   ⚠️ Python 图文解析失败: ${e.message}`);
+    }
+  } else {
+    // 内容已有，但仍需要拿图片列表
+    try {
+      const noteData = await getXhsImageNote(url);
+      if (!noteData.error && noteData.images?.length) xhsImages = noteData.images;
+    } catch (e) {
+      // 拿不到图片列表不影响主流程
     }
   }
 
@@ -249,7 +301,6 @@ async function fetchXiaohongshu(url) {
     } catch (e) {
       console.error(`   ⚠️ 视频转录失败: ${e.message}`);
     }
-    // 视频转录失败或结果为空
     return {
       text: `标题: ${title}\n\n作者: ${author}\n\n内容: ${content.slice(0, 8000)}`,
       transcript: "（缺少视频原文）",
@@ -257,10 +308,23 @@ async function fetchXiaohongshu(url) {
     };
   }
 
-  // 图文笔记
+  // 图文笔记：对图片做 OCR
+  let imageText = "";
+  if (xhsImages.length > 0) {
+    console.log(`   🖼️ 检测到 ${xhsImages.length} 张图片，开始 OCR...`);
+    try {
+      imageText = await ocrImagesWithDashscope(xhsImages);
+      if (imageText) console.log(`   ✅ OCR 完成，提取 ${imageText.length} 字`);
+    } catch (e) {
+      console.warn(`   ⚠️ 图片 OCR 失败: ${e.message}`);
+    }
+  }
+
+  const fullContent = imageText ? `${content}\n\n【图片文字】\n${imageText}` : content;
+
   return {
-    text: `标题: ${title}\n\n作者: ${author}\n\n内容: ${content.slice(0, 8000)}`,
-    transcript: "（图片）",
+    text: `标题: ${title}\n\n作者: ${author}\n\n内容: ${fullContent.slice(0, 8000)}`,
+    transcript: imageText ? `【图片OCR】\n${imageText.slice(0, 3000)}` : "（图片）",
     originalText: content.slice(0, 8000),
   };
 }
