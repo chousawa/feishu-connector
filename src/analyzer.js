@@ -14,7 +14,7 @@ import { getConfig } from "./feishu.js";
  */
 export async function analyzeContent(content, url, topics = "") {
   const config = getConfig();
-  const miniMaxConfig = config.minimax;
+  const kimiConfig = config.kimi;
 
   // 截取内容（前8000字符，避免超过API限制）
   const truncatedContent = content.slice(0, 8000);
@@ -40,11 +40,11 @@ ${truncatedContent}
 只返回JSON，不要其他内容。`;
 
   try {
-    const baseUrl = miniMaxConfig.base_url || "https://api.minimaxi.com/anthropic";
+    const baseUrl = kimiConfig.base_url || "https://api.kimi.com/coding/";
     const response = await axios.post(
-      `${baseUrl}/v1/messages`,
+      `${baseUrl}v1/messages`,
       {
-        model: miniMaxConfig.model,
+        model: kimiConfig.model,
         messages: [
           {
             role: "system",
@@ -61,7 +61,7 @@ ${truncatedContent}
       {
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${miniMaxConfig.api_key}`,
+          "Authorization": `Bearer ${kimiConfig.api_key}`,
         },
         timeout: 60000,
       }
