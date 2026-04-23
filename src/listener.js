@@ -22,12 +22,11 @@ try {
 const feishuConfig = config.feishu;
 const targetChatId = feishuConfig.chat_id;
 const topics = config.topics || "AI,产品";
-const triggerKeywords = ["收集", "抓取", "处理", "开始"];
 const stopKeywords = ["停止", "退出", "结束"];
 
 console.log(`📌 监听群: ${targetChatId}`);
 console.log(`📌 关注方向: ${topics}`);
-console.log(`📌 触发关键词: ${triggerKeywords.join(", ")}\n`);
+console.log(`📌 发链接自动收集，发"停止"退出\n`);
 
 // 初始化飞书客户端
 const client = new Client({
@@ -314,11 +313,7 @@ function extractMessageText(data) {
 }
 
 // 处理状态追踪
-let lastTriggerTime = 0;
 let isProcessing = false;
-let pendingTrigger = null; // 待处理的触发请求
-const TRIGGER_COOLDOWN = 60000; // 60秒冷却时间，防止重复触发
-const COLLECT_WINDOW = 3000; // 收集窗口：收到"收集"后等待3秒再处理
 const STARTUP_WARMUP = 10000; // 启动预热期10秒，忽略消息
 
 // 记录启动时间和已处理的消息ID
@@ -375,76 +370,51 @@ wsClient.start({
       // 引用消息：补充想法（有 parent_id 且不含触发关键词）
       const parentId = data.message?.parent_id;
       const isQuote = !!parentId;
-      const isTrigger = triggerKeywords.some(kw => text.includes(kw));
       const isStop = stopKeywords.some(kw => text.includes(kw));
 
-      if (isQuote && !isTrigger && !isStop) {
+      if (isQuote && !isStop) {
         console.log(`   📝 识别为引用补充，父消息: ${parentId}`);
         await handleQuoteMessage(data);
         return;
       }
 
-      // 提取消息中的链接并加入队列
-      if (text && text.includes('http')) {
-        const links = parseMessageLinks(text);
-        for (const link of links) {
-          // 去重
-          if (!messageQueue.find(l => l.url === link.url)) {
-            messageQueue.push({ url: link.url, platform: getPlatform(link.url) });
-            console.log(`   📎 加入队列: ${link.url}`);
-          }
-        }
-      }
-
-      // 如果正在处理中，忽略触发
-      if (isProcessing) {
-        console.log("   ⏳ 正在处理中，跳过");
-        return;
-      }
-
-      // 冷却时间内忽略触发
-      const now = Date.now();
-      if (now - lastTriggerTime < TRIGGER_COOLDOWN) {
-        console.log("   ⏳ 冷却时间内，跳过");
-        return;
-      }
-
       // 检查是否停止
-      if (stopKeywords.some(kw => text.includes(kw))) {
+      if (isStop) {
         console.log("👋 收到停止命令");
         await sendReply(targetChatId, "👋 监听服务已停止");
         process.exit(0);
       }
 
-      // 检查是否触发
-      const shouldTrigger = triggerKeywords.some(kw => text.includes(kw));
-      if (shouldTrigger) {
+      // 有链接就直接触发收集
+      if (text && text.includes('http')) {
+        const links = parseMessageLinks(text);
+        if (links.length === 0) return;
+
         if (isProcessing) {
-          console.log("   ⏳ 正在处理中，跳过");
+          console.log("   ⏳ 正在处理中，链接已忽略");
           return;
         }
 
-        const now2 = Date.now();
-        if (now2 - lastTriggerTime < TRIGGER_COOLDOWN) {
-          console.log("   ⏳ 冷却时间内，跳过");
-          return;
+        console.log(`   🔗 检测到 ${links.length} 个链接，触发收集`);
+        // 把本条消息的链接放入队列
+        for (const link of links) {
+          if (!messageQueue.find(l => l.url === link.url)) {
+            messageQueue.push({ url: link.url, platform: getPlatform(link.url) });
+          }
         }
 
-        console.log("🚀 触发自动收集!");
-        lastTriggerTime = now2;
         isProcessing = true;
         try {
           await runAutoProcess();
         } finally {
           isProcessing = false;
         }
-        return;
       }
     },
   }),
 }).then(() => {
   console.log("🟢 长连接已建立，监听中...\n");
-  console.log("💡 在群里发送'收集'来触发链接收集");
+  console.log("💡 在群里发送链接自动触发收集");
   console.log("💡 发送'停止'来退出监听\n");
 }).catch((error) => {
   console.error("❌ 长连接建立失败:", error.message);
