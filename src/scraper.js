@@ -121,7 +121,10 @@ async function ocrImagesWithDashscope(imageUrls) {
   if (!apiKey || !imageUrls?.length) return "";
 
   const results = [];
-  for (const imgUrl of imageUrls.slice(0, 5)) {
+  for (const img of imageUrls.slice(0, 5)) {
+    // 图片可能是字符串或对象（含 url_png/url_webp）
+    const imgUrl = typeof img === "string" ? img : (img.url_png || img.url_webp || "");
+    if (!imgUrl) continue;
     try {
       const res = await axios.post(
         "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
