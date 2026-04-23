@@ -1,22 +1,10 @@
-/**
- * MiniMax API 分析模块
- * 使用 MiniMax 分析链接内容，提取关键信息
- */
 import axios from "axios";
 import { getConfig } from "./feishu.js";
 
-/**
- * 调用 MiniMax API 分析内容
- * @param {string} content 页面内容
- * @param {string} url 页面URL
- * @param {string} topics 关注方向（逗号分隔）
- * @returns {Object} 分析结果
- */
 export async function analyzeContent(content, url, topics = "") {
   const config = getConfig();
   const kimiConfig = config.kimi;
 
-  // 截取内容（前8000字符，避免超过API限制）
   const truncatedContent = content.slice(0, 8000);
 
   const prompt = `你是一个内容分析助手。请分析以下链接的内容，并提取关键信息。
@@ -39,62 +27,50 @@ ${truncatedContent}
 
 只返回JSON，不要其他内容。`;
 
-  try {
-    const baseUrl = kimiConfig.base_url || "https://api.kimi.com/coding/";
-    const response = await axios.post(
-      `${baseUrl}v1/messages`,
-      {
-        model: kimiConfig.model,
-        messages: [
-          {
-            role: "system",
-            content: "你是一个专业的内容分析助手，擅长提取关键信息和总结要点。",
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-        max_tokens: 1024,
-        temperature: 0.7,
-      },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${kimiConfig.api_key}`,
-        },
-        timeout: 60000,
-      }
-    );
+  const baseUrl = kimiConfig.base_url || "https://api.kimi.com/coding/";
+  const maxRetries = 3;
+  let lastError;
 
-    if (response.data && response.data.content && response.data.content.length > 0) {
-      // MiniMax 返回格式: content 是数组，包含 type: "text" 的对象
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await axios.post(
+        `${baseUrl}v1/messages`,
+        {
+          model: kimiConfig.model,
+          messages: [
+            { role: "system", content: "你是一个专业的内容分析助手，擅长提取关键信息和总结要点。" },
+            { role: "user", content: prompt },
+          ],
+          max_tokens: 1024,
+          temperature: 0.7,
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${kimiConfig.api_key}`,
+          },
+          timeout: 60000,
+        }
+      );
+
+      if (!response.data?.content?.length) {
+        throw new Error("API 返回格式异常");
+      }
+
       const contentArray = response.data.content;
       let resultText = "";
-
       for (const item of contentArray) {
-        if (item.type === "text") {
-          resultText = item.text;
-          break;
-        }
+        if (item.type === "text") { resultText = item.text; break; }
       }
+      if (!resultText) resultText = JSON.stringify(contentArray);
 
-      if (!resultText) {
-        resultText = JSON.stringify(contentArray);
-      }
-
-      // 尝试解析 JSON
       try {
-        // 处理可能的 markdown 代码块
         const jsonMatch = resultText.match(/```json\n?([\s\S]*?)\n?```/) ||
                           resultText.match(/```\n?([\s\S]*?)\n?```/) ||
                           [null, resultText];
-
-        const jsonStr = jsonMatch[1] || resultText;
-        const result = JSON.parse(jsonStr.trim());
-
+        const result = JSON.parse((jsonMatch[1] || resultText).trim());
         return {
-          title: result.title || truncatedContent.slice(0, 15) + (truncatedContent.length > 15 ? "..." : ""),
+          title: result.title || truncatedContent.slice(0, 15) + "...",
           author: result.author || "",
           summary: result.summary || "",
           relevance: parseInt(result.relevance) || 3,
@@ -103,51 +79,38 @@ ${truncatedContent}
         };
       } catch (parseError) {
         console.error("解析JSON失败:", parseError.message);
-        // 尝试从文本中提取标题
-        let title = truncatedContent.slice(0, 15) + (truncatedContent.length > 15 ? "..." : "");
+        let title = truncatedContent.slice(0, 15) + "...";
         let summary = resultText.slice(0, 300);
-
-        // 尝试匹配标题
         const titleMatch = resultText.match(/"title"\s*:\s*"([^"]+)"/) ||
-                          resultText.match(/标题[：:]\s*(.+)/) ||
-                          resultText.match(/^#\s*(.+)/m);
-        if (titleMatch) {
-          title = titleMatch[1].slice(0, 100);
-        }
-
-        // 尝试提取summary
+                           resultText.match(/标题[：:]\s*(.+)/) ||
+                           resultText.match(/^#\s*(.+)/m);
+        if (titleMatch) title = titleMatch[1].slice(0, 100);
         const summaryMatch = resultText.match(/"summary"\s*:\s*"([^"]+)"/) ||
-                           resultText.match(/内容概括[：:]\s*(.+)/);
-        if (summaryMatch) {
-          summary = summaryMatch[1].slice(0, 300);
-        }
-
-        return {
-          title: title,
-          author: "",
-          summary: summary,
-          relevance: 3,
-          direction: "其他",
-          insights: "",
-        };
+                             resultText.match(/内容概括[：:]\s*(.+)/);
+        if (summaryMatch) summary = summaryMatch[1].slice(0, 300);
+        return { title, author: "", summary, relevance: 3, direction: "其他", insights: "" };
       }
+    } catch (error) {
+      lastError = error;
+      if (error.response?.status === 429 && attempt < maxRetries) {
+        const waitSec = attempt * 10;
+        console.warn(`   ⚠️ 分析限流(429)，${waitSec}s 后重试(${attempt}/${maxRetries})...`);
+        await new Promise(r => setTimeout(r, waitSec * 1000));
+        continue;
+      }
+      break;
     }
-
-    throw new Error("API 返回格式异常");
-  } catch (error) {
-    console.error(`分析内容失败: ${error.message}`);
-    // 返回默认值
-    return {
-      title: "获取失败",
-      author: "",
-      summary: "内容获取失败",
-      relevance: 1,
-      direction: "其他",
-      insights: "",
-    };
   }
+
+  console.error(`分析内容失败: ${lastError.message}`);
+  return {
+    title: "获取失败",
+    author: "",
+    summary: "内容获取失败",
+    relevance: 1,
+    direction: "其他",
+    insights: "",
+  };
 }
 
-export default {
-  analyzeContent,
-};
+export default { analyzeContent };
