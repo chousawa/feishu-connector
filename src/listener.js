@@ -97,6 +97,7 @@ async function handleQuoteMessage(data) {
 
   if (!currentText || !currentText.trim()) {
     console.log("   引用消息无文字内容，跳过");
+    await sendReply(targetChatId, "⚠️ 引用补充的消息没有文字内容，请输入你的想法");
     return;
   }
 
@@ -111,6 +112,7 @@ async function handleQuoteMessage(data) {
 
   if (!parentContent) {
     console.log("   无法获取被引用消息，跳过");
+    await sendReply(targetChatId, "⚠️ 无法获取被引用的消息，记录失败");
     return;
   }
 
@@ -126,6 +128,7 @@ async function handleQuoteMessage(data) {
   const links = parseMessageLinks(parentText);
   if (links.length === 0) {
     console.log("   被引用消息不含链接，跳过");
+    await sendReply(targetChatId, "⚠️ 被引用的消息不含链接，无法关联记录");
     return;
   }
 
