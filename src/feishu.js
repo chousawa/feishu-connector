@@ -469,6 +469,46 @@ function getFieldTypeId(type) {
   return typeMap[type] || 1;
 }
 
+/**
+ * 按 URL 查找多维表格中的记录
+ * @param {string} url 链接
+ * @returns {{ recordId, currentThoughts } | null}
+ */
+export async function findRecordByUrl(url) {
+  const records = await getBitableRecords();
+  for (const record of records) {
+    const linkField = record.fields?.["链接"];
+    let recordUrl = null;
+    if (typeof linkField === "string") {
+      recordUrl = linkField;
+    } else if (linkField && typeof linkField === "object") {
+      recordUrl = linkField.link || linkField.url || linkField.text || null;
+    }
+    if (recordUrl === url) {
+      const thoughtsField = record.fields?.["我的想法"];
+      const currentThoughts = typeof thoughtsField === "string" ? thoughtsField : "";
+      return { recordId: record.id, currentThoughts };
+    }
+  }
+  return null;
+}
+
+/**
+ * 追加想法到指定记录（不覆盖，用换行分隔）
+ * @param {string} recordId 记录 ID
+ * @param {string} existingThoughts 已有想法内容
+ * @param {string} newThought 新增想法
+ */
+export async function appendThought(recordId, existingThoughts, newThought) {
+  const timestamp = new Date(Date.now() + 8 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 16)
+    .replace("T", " ");
+  const entry = `[${timestamp}] ${newThought}`;
+  const merged = existingThoughts ? `${existingThoughts}\n${entry}` : entry;
+  return updateBitableRecord(recordId, { "我的想法": merged });
+}
+
 export default {
   getConfig,
   getGroupMessages,
@@ -479,4 +519,7 @@ export default {
   createField,
   sendMessage,
   getLatestMessages,
+  findRecordByUrl,
+  appendThought,
+  updateBitableRecord,
 };

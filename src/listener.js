@@ -3,7 +3,7 @@
  * 使用飞书 SDK 的 WSClient 建立长连接接收群消息事件
  */
 import { Client, WSClient, EventDispatcher, LoggerLevel } from "@larksuiteoapi/node-sdk";
-import { getConfig, writeToBitable, createField, sendMessage } from "./feishu.js";
+import { getConfig, writeToBitable, createField, sendMessage, findRecordByUrl, appendThought } from "./feishu.js";
 import { fetchLinks, getExistingUrls } from "./index.js";
 import { fetchPageContent } from "./scraper.js";
 import { analyzeContent } from "./analyzer.js";
@@ -90,6 +90,66 @@ async function fetchWeiboWithPlaywright(url) {
   }
 }
 
+// 处理引用消息：提取被引用消息里的链接，把当前消息文本作为想法追加到表格
+async function handleQuoteMessage(data) {
+  const parentId = data.message?.parent_id;
+  const currentText = extractMessageText(data);
+
+  if (!currentText || !currentText.trim()) {
+    console.log("   引用消息无文字内容，跳过");
+    return;
+  }
+
+  // 获取被引用的父消息内容
+  let parentContent = null;
+  try {
+    const resp = await client.im.v1.message.get({ path: { message_id: parentId } });
+    parentContent = resp?.data?.items?.[0] ?? null;
+  } catch (e) {
+    console.error("   获取父消息失败:", e.message);
+  }
+
+  if (!parentContent) {
+    console.log("   无法获取被引用消息，跳过");
+    return;
+  }
+
+  // 从父消息里提取链接
+  let parentText = "";
+  try {
+    const body = JSON.parse(parentContent.body?.content || "{}");
+    parentText = body.text || "";
+  } catch {
+    parentText = parentContent.body?.content || "";
+  }
+
+  const links = parseMessageLinks(parentText);
+  if (links.length === 0) {
+    console.log("   被引用消息不含链接，跳过");
+    return;
+  }
+
+  const thought = currentText.trim();
+  let updatedCount = 0;
+
+  for (const link of links) {
+    const found = await findRecordByUrl(link.url);
+    if (!found) {
+      console.log(`   ⚠️  表格中未找到该链接，跳过: ${link.url}`);
+      continue;
+    }
+    await appendThought(found.recordId, found.currentThoughts, thought);
+    console.log(`   ✅ 已追加想法到: ${link.url}`);
+    updatedCount++;
+  }
+
+  if (updatedCount > 0) {
+    await sendReply(targetChatId, `✅ 想法已记录（更新 ${updatedCount} 条）`);
+  } else {
+    await sendReply(targetChatId, "⚠️ 被引用的链接尚未收集到表格，请先收集后再补充想法");
+  }
+}
+
 // 执行自动流程
 async function runAutoProcess() {
   console.log("🚀 开始执行自动收集流程...\n");
@@ -100,6 +160,7 @@ async function runAutoProcess() {
     await createField("方向", "text");
     await createField("视频原文", "text");
     await createField("帖子原文", "text");
+    await createField("我的想法", "text");
 
     // 优先使用队列中的链接
     let queueLinks = [...messageQueue];
@@ -307,6 +368,18 @@ wsClient.start({
 
       const text = extractMessageText(data);
       console.log(`   消息: ${text.slice(0, 50)}...`);
+
+      // 引用消息：补充想法（有 parent_id 且不含触发关键词）
+      const parentId = data.message?.parent_id;
+      const isQuote = !!parentId;
+      const isTrigger = triggerKeywords.some(kw => text.includes(kw));
+      const isStop = stopKeywords.some(kw => text.includes(kw));
+
+      if (isQuote && !isTrigger && !isStop) {
+        console.log(`   📝 识别为引用补充，父消息: ${parentId}`);
+        await handleQuoteMessage(data);
+        return;
+      }
 
       // 提取消息中的链接并加入队列
       if (text && text.includes('http')) {
