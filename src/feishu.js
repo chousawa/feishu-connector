@@ -189,7 +189,7 @@ export async function writeToBitable(record) {
     "来源": record.source || "其他",
     "方向": record.topics || "",
     "内容概括": record.summary || "",
-    "视频原文": record.transcript || "",
+    "视频/图片原文": record.transcript || "",
     "帖子原文": record.originalText || "",
     "优先级": String(record.priority || 3),
     "状态": record.status || "未读",

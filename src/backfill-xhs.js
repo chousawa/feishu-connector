@@ -123,7 +123,7 @@ async function main() {
     const fields = r.fields || {};
     const source = fields["来源"] || "";
     const originalText = fields["帖子原文"] || "";
-    const transcript = fields["视频原文"] || "";
+    const transcript = fields["视频/图片原文"] || "";
     const url = extractUrl(fields["链接"]);
 
     // 来源字段可能是字符串或选项对象
@@ -194,7 +194,7 @@ async function main() {
       // 只更新非空字段，避免覆盖原有数据
       const updateFields = {};
       if (originalText.trim().length > 0) updateFields["帖子原文"] = originalText.slice(0, 10000);
-      if (transcript.trim().length > 0) updateFields["视频原文"] = transcript.slice(0, 10000);
+      if (transcript.trim().length > 0) updateFields["视频/图片原文"] = transcript.slice(0, 10000);
 
       if (Object.keys(updateFields).length === 0) {
         console.log("   ⚠️  抓取结果中没有原文内容，跳过");

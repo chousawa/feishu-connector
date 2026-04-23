@@ -206,7 +206,7 @@ async function main() {
       const url = extractUrl(r.fields?.["链接"]);
       if (!url || DEAD_LINKS.has(url)) return false;
 
-      const transcript = r.fields?.["视频原文"] || "";
+      const transcript = r.fields?.["视频/图片原文"] || "";
       if (transcript === "（图片）") return false;
 
       return (
@@ -248,7 +248,7 @@ async function main() {
       if (!isVideo) {
         console.log("   📝 图文笔记，标记为（图片），跳过转录");
         // 更新为（图片）标记，避免重复处理
-        await updateRecord(recordId, { "视频原文": "（图片）" });
+        await updateRecord(recordId, { "视频/图片原文": "（图片）" });
         skipped++;
         continue;
       }
@@ -260,13 +260,13 @@ async function main() {
 
       if (!transcript || transcript.length < 5) {
         console.log("   ⚠️  转录结果为空，标记为（缺少视频原文）");
-        await updateRecord(recordId, { "视频原文": "（缺少视频原文）" });
+        await updateRecord(recordId, { "视频/图片原文": "（缺少视频原文）" });
         failed++;
         continue;
       }
 
       const ok = await updateRecord(recordId, {
-        "视频原文": transcript.slice(0, 10000),
+        "视频/图片原文": transcript.slice(0, 10000),
       });
       if (ok) {
         console.log(`   ✅ 转录成功，写入 ${transcript.length} 字`);
@@ -284,7 +284,7 @@ async function main() {
         err.message.includes("直链")
       ) {
         try {
-          await updateRecord(recordId, { "视频原文": "（缺少视频原文）" });
+          await updateRecord(recordId, { "视频/图片原文": "（缺少视频原文）" });
           console.log("   ↩️  已标记为（缺少视频原文）");
         } catch (_) {}
       }

@@ -160,7 +160,7 @@ async function runAutoProcess() {
 
   try {
     await createField("方向", "text");
-    await createField("视频原文", "text");
+    await createField("视频/图片原文", "text");
     await createField("帖子原文", "text");
     await createField("我的想法", "text");
 
