@@ -23,10 +23,11 @@ const feishuConfig = config.feishu;
 const targetChatId = feishuConfig.chat_id;
 const topics = config.topics || "AI,产品";
 const stopKeywords = ["停止", "退出", "结束"];
+const triggerKeywords = ["收集", "抓取", "处理", "开始"];
 
 console.log(`📌 监听群: ${targetChatId}`);
 console.log(`📌 关注方向: ${topics}`);
-console.log(`📌 发链接自动收集，发"停止"退出\n`);
+console.log(`📌 发链接自动收集，或发"收集"触发全量扫描，发"停止"退出\n`);
 
 // 初始化飞书客户端
 const client = new Client({
@@ -388,12 +389,13 @@ wsClient.start({
       const text = extractMessageText(data);
       console.log(`   消息: ${text.slice(0, 50)}...`);
 
-      // 引用消息：补充想法（有 parent_id 且不含触发关键词）
+      // 引用消息：补充想法（有 parent_id 且不含触发/停止关键词）
       const parentId = data.message?.parent_id;
       const isQuote = !!parentId;
       const isStop = stopKeywords.some(kw => text.includes(kw));
+      const isTrigger = triggerKeywords.some(kw => text.includes(kw));
 
-      if (isQuote && !isStop) {
+      if (isQuote && !isStop && !isTrigger) {
         console.log(`   📝 识别为引用补充，父消息: ${parentId}`);
         await handleQuoteMessage(data);
         return;
@@ -406,24 +408,28 @@ wsClient.start({
         process.exit(0);
       }
 
-      // 有链接就直接触发收集
+      // 有链接就加入队列并触发收集
       if (text && text.includes('http')) {
         const links = parseMessageLinks(text);
-        if (links.length === 0) return;
+        if (links.length > 0) {
+          for (const link of links) {
+            if (!messageQueue.find(l => l.url === link.url)) {
+              messageQueue.push({ url: link.url, platform: getPlatform(link.url) });
+            }
+          }
+          console.log(`   🔗 检测到 ${links.length} 个链接，加入队列`);
+        }
+      }
 
+      // 发"收集"关键词或消息含链接时触发收集
+      const hasLinks = text && text.includes('http') && parseMessageLinks(text).length > 0;
+      if (isTrigger || hasLinks) {
         if (isProcessing) {
-          console.log("   ⏳ 正在处理中，链接已忽略");
+          console.log("   ⏳ 正在处理中，已忽略");
           return;
         }
 
-        console.log(`   🔗 检测到 ${links.length} 个链接，触发收集`);
-        // 把本条消息的链接放入队列
-        for (const link of links) {
-          if (!messageQueue.find(l => l.url === link.url)) {
-            messageQueue.push({ url: link.url, platform: getPlatform(link.url) });
-          }
-        }
-
+        if (isTrigger) console.log("🚀 收到'收集'指令，触发全量扫描");
         isProcessing = true;
         try {
           await runAutoProcess();
