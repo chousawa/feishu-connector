@@ -320,6 +320,26 @@ const STARTUP_WARMUP = 10000; // 启动预热期10秒，忽略消息
 const startupTime = Date.now();
 const processedMessages = new Set();
 
+// WS 活跃时间 watchdog：SDK 重连成功会输出 'ws client ready'，拦截以重置计时
+let lastWsActivity = Date.now();
+const _origLog = console.log.bind(console);
+console.log = (...args) => {
+  const msg = args.join(' ');
+  if (msg.includes('ws client ready') || msg.includes('ws_client_ready')) {
+    lastWsActivity = Date.now();
+  }
+  _origLog(...args);
+};
+
+// 超过 30 分钟无任何 WS 活动则自动退出，由 PM2 重启
+setInterval(() => {
+  const idleMs = Date.now() - lastWsActivity;
+  if (idleMs > 30 * 60 * 1000) {
+    console.error(`❌ WS 连接已静默 ${Math.round(idleMs / 60000)} 分钟，触发自动重启`);
+    process.exit(1);
+  }
+}, 5 * 60 * 1000);
+
 // 消息队列：从事件中提取的待处理链接
 const messageQueue = [];
 
@@ -334,6 +354,7 @@ const wsClient = new WSClient({
 wsClient.start({
   eventDispatcher: new EventDispatcher({}).register({
     "im.message.receive_v1": async (data) => {
+      lastWsActivity = Date.now();
       console.log("\n📩 收到消息事件");
 
       // 启动预热期内忽略消息（防止长连接重连时重复处理）
@@ -413,6 +434,7 @@ wsClient.start({
     },
   }),
 }).then(() => {
+  lastWsActivity = Date.now();
   console.log("🟢 长连接已建立，监听中...\n");
   console.log("💡 在群里发送链接自动触发收集");
   console.log("💡 发送'停止'来退出监听\n");
