@@ -432,7 +432,18 @@ function createEventDispatcher() {
         }
       }
     },
-  }),
+  });
+}
+
+// 启动飞书长连接
+const wsClient = new WSClient({
+  appId: feishuConfig.app_id,
+  appSecret: feishuConfig.app_secret,
+  loggerLevel: LoggerLevel.info,
+});
+
+wsClient.start({
+  eventDispatcher: createEventDispatcher(),
 }).then(() => {
   lastWsActivity = Date.now();
   console.log("🟢 长连接已建立，监听中...\n");
