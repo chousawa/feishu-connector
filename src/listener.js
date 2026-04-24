@@ -332,28 +332,22 @@ console.log = (...args) => {
   _origLog(...args);
 };
 
-// 超过 30 分钟无任何 WS 活动则自动退出，由 PM2 重启
+// 超过 10 分钟无任何 WS 活动则自动退出，由 PM2 重启
+// 飞书 SDK 的 reConnect() 有已知 bug：重连失败后会无限循环但无法恢复，只能重建进程
 setInterval(() => {
   const idleMs = Date.now() - lastWsActivity;
-  if (idleMs > 30 * 60 * 1000) {
+  if (idleMs > 10 * 60 * 1000) {
     console.error(`❌ WS 连接已静默 ${Math.round(idleMs / 60000)} 分钟，触发自动重启`);
     process.exit(1);
   }
-}, 5 * 60 * 1000);
+}, 3 * 60 * 1000);
 
 // 消息队列：从事件中提取的待处理链接
 const messageQueue = [];
 
-// 初始化飞书长连接客户端
-const wsClient = new WSClient({
-  appId: feishuConfig.app_id,
-  appSecret: feishuConfig.app_secret,
-  loggerLevel: LoggerLevel.info,
-});
-
-// 启动长连接监听
-wsClient.start({
-  eventDispatcher: new EventDispatcher({}).register({
+// 创建事件分发器（独立函数，每次重建 WSClient 时复用）
+function createEventDispatcher() {
+  return new EventDispatcher({}).register({
     "im.message.receive_v1": async (data) => {
       lastWsActivity = Date.now();
       console.log("\n📩 收到消息事件");
@@ -442,7 +436,7 @@ wsClient.start({
 }).then(() => {
   lastWsActivity = Date.now();
   console.log("🟢 长连接已建立，监听中...\n");
-  console.log("💡 在群里发送链接自动触发收集");
+  console.log("💡 在群里发送链接自动触发收集，或发'收集'触发全量扫描");
   console.log("💡 发送'停止'来退出监听\n");
 }).catch((error) => {
   console.error("❌ 长连接建立失败:", error.message);
