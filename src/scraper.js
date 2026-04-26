@@ -484,22 +484,59 @@ async function fetchXiaoyuzhou(url) {
 }
 
 /**
- * 获取 X (Twitter) 内容 - 尝试多种方案
+ * 获取 X (Twitter) 内容 - 使用 twitter-cli
  */
 async function fetchX(url) {
   try {
-    // 先尝试用 oEmbed API（不需要认证）
+    const { execFile } = await import("child_process");
+    const { promisify } = await import("util");
+    const execFileAsync = promisify(execFile);
+
+    // 从 URL 提取用户名和 tweet ID
+    const userMatch = url.match(/(?:x\.com|twitter\.com)\/([^\/]+)/);
     const tweetIdMatch = url.match(/status\/(\d+)/);
-    if (!tweetIdMatch) {
-      console.log(`   ⚠️ 无法从URL提取tweet ID: ${url}`);
+
+    if (!tweetIdMatch || !userMatch) {
+      console.log(`   ⚠️ 无法从URL提取信息: ${url}`);
       return null;
     }
+
+    const username = userMatch[1];
     const tweetId = tweetIdMatch[1];
 
-    // 尝试 Twitter oEmbed API
+    console.log(`   📡 尝试 twitter-cli: @${username}/${tweetId}`);
+
+    try {
+      // 调用 twitter-cli 获取推文
+      const { stdout } = await execFileAsync('twitter', ['--filter', `${username}`, '--likes'], {
+        timeout: 30000,
+        maxBuffer: 1024 * 1024,
+      });
+
+      if (!stdout || stdout.length < 10) {
+        console.log(`   ⚠️ twitter-cli 无结果`);
+        return null;
+      }
+
+      // 简单处理输出
+      const lines = stdout.trim().split('\n');
+      const tweetText = lines.filter(l => l.trim().length > 0).slice(0, 5).join('\n');
+
+      if (tweetText && tweetText.length > 20) {
+        console.log(`   ✅ twitter-cli 获取成功`);
+        return {
+          text: `推文作者: ${username}\n\n内容:\n${tweetText.slice(0, 8000)}`,
+          originalText: tweetText.slice(0, 8000),
+        };
+      }
+    } catch (cliError) {
+      console.log(`   ⚠️ twitter-cli 获取失败: ${cliError.message}`);
+    }
+
+    // 备选：用 oEmbed API
+    console.log(`   📡 尝试 oEmbed API...`);
     try {
       const oembedUrl = `https://publish.twitter.com/oembed?url=${encodeURIComponent(url)}&omit_script=true`;
-      console.log(`   📡 尝试 oEmbed API...`);
       const response = await axios.get(oembedUrl, {
         timeout: 10000,
         headers: {
@@ -509,13 +546,12 @@ async function fetchX(url) {
       const data = response.data;
 
       if (data && data.html) {
-        // 从 HTML 中提取文本
         const textMatch = data.html.match(/<p[^>]*>([\s\S]*?)<\/p>/);
         const tweetText = textMatch
           ? textMatch[1].replace(/<[^>]+>/g, '').replace(/&[a-z]+;/g, '').trim()
           : data.html.replace(/<[^>]+>/g, '').trim();
 
-        const author = data.author_name || 'Unknown Author';
+        const author = data.author_name || username;
 
         if (tweetText && tweetText.length > 5) {
           console.log(`   ✅ oEmbed API 获取成功`);
@@ -530,9 +566,8 @@ async function fetchX(url) {
       console.log(`   ⚠️ oEmbed API 获取失败: ${errorMsg}`);
     }
 
-    // 备选：用 Playwright 爬取
-    console.log(`   ⚠️ 尝试用 Playwright 爬取`);
-    return await fetchXWithPlaywright(url);
+    console.log(`   ⚠️ 所有方案均失败`);
+    return null;
   } catch (error) {
     console.error(`   X 内容获取失败: ${error.message}`);
     return null;
