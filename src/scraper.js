@@ -491,10 +491,31 @@ async function fetchX(url) {
     const { getConfig } = await import("./feishu.js");
     const config = getConfig();
 
-    // 尝试多个备用方案获取推文
     console.log(`   🔍 尝试获取推文...`);
 
-    // 方案 1: 使用 Nitter 公共实例
+    // 方案 1: 优先使用代理服务（如果有配置）
+    const proxyUrl = config.x?.proxy_url;
+    if (proxyUrl) {
+      try {
+        console.log(`   🌐 通过代理服务获取...`);
+        const response = await axios.get(`${proxyUrl}/api/tweet`, {
+          params: { url },
+          timeout: 20000,
+        });
+
+        if (response.data?.success) {
+          console.log(`   ✅ 获取成功`);
+          return {
+            text: response.data.text,
+            originalText: response.data.originalText,
+          };
+        }
+      } catch (e) {
+        console.log(`   ⚠️ 代理服务不可用: ${e.message}`);
+      }
+    }
+
+    // 方案 2: 使用 Nitter
     const tweetIdMatch = url.match(/status\/(\d+)/);
     const userMatch = url.match(/(?:x\.com|twitter\.com)\/([^\/]+)/);
 
@@ -506,7 +527,6 @@ async function fetchX(url) {
     const tweetId = tweetIdMatch[1];
     const username = userMatch[1];
 
-    // 尝试 Nitter
     try {
       console.log(`   📡 尝试 Nitter...`);
       const nitterResponse = await axios.get(
@@ -528,10 +548,10 @@ async function fetchX(url) {
         };
       }
     } catch (e) {
-      console.log(`   ⚠️ Nitter 失败: ${e.message}`);
+      console.log(`   ⚠️ Nitter 失败`);
     }
 
-    // 方案 2: 使用 Cookie 请求原站
+    // 方案 3: 使用 Cookie 请求原站（仅限有网络访问的环境）
     const xCookie = config.x?.cookie;
     if (xCookie) {
       try {
@@ -541,18 +561,9 @@ async function fetchX(url) {
           {
             timeout: 15000,
             headers: {
-              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
               'Cookie': xCookie,
               'Referer': 'https://x.com/',
-              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-              'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-              'Accept-Encoding': 'gzip, deflate, br',
-              'DNT': '1',
-              'Connection': 'keep-alive',
-              'Upgrade-Insecure-Requests': '1',
-              'Sec-Fetch-Dest': 'document',
-              'Sec-Fetch-Mode': 'navigate',
-              'Sec-Fetch-Site': 'none',
             }
           }
         );
@@ -568,7 +579,7 @@ async function fetchX(url) {
           };
         }
       } catch (e) {
-        console.log(`   ⚠️ Cookie 请求失败: ${e.message}`);
+        console.log(`   ⚠️ Cookie 请求失败`);
       }
     }
 
