@@ -21,6 +21,7 @@
     "@larksuiteoapi/node-sdk": "^1.62.0",
     "axios": "^1.6.0",
     "playwright": "^1.58.2",
-    "twitter-cli": "^0.0.2"
+    "twitter-cli": "^0.0.2",
+    "twitter-scrape": "^0.0.2"
   }
 }

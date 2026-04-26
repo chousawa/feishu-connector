@@ -484,14 +484,17 @@ async function fetchXiaoyuzhou(url) {
 }
 
 /**
- * 获取 X (Twitter) 内容 - 用 Cookie 调用 GraphQL API
+ * 获取 X (Twitter) 内容 - 用 Cookie 调用 API
  */
 async function fetchX(url) {
   try {
     const { getConfig } = await import("./feishu.js");
     const config = getConfig();
 
-    // 从 URL 提取信息
+    // 尝试多个备用方案获取推文
+    console.log(`   🔍 尝试获取推文...`);
+
+    // 方案 1: 使用 Nitter 公共实例
     const tweetIdMatch = url.match(/status\/(\d+)/);
     const userMatch = url.match(/(?:x\.com|twitter\.com)\/([^\/]+)/);
 
@@ -503,83 +506,65 @@ async function fetchX(url) {
     const tweetId = tweetIdMatch[1];
     const username = userMatch[1];
 
-    // 检查是否有 X Cookie 配置
-    const xCookie = config.x?.cookie;
-    const xCt0 = config.x?.ct0;
+    // 尝试 Nitter
+    try {
+      console.log(`   📡 尝试 Nitter...`);
+      const nitterResponse = await axios.get(
+        `https://nitter.poast.org/${username}/status/${tweetId}`,
+        { timeout: 10000, headers: { 'User-Agent': 'Mozilla/5.0' } }
+      );
 
-    if (!xCookie || !xCt0) {
-      console.log(`   ⚠️ 未配置 X Cookie，请先配置 config.json`);
-      return null;
+      const html = nitterResponse.data;
+      const textMatch = html.match(/<div class="tweet-text"[^>]*>([\s\S]*?)<\/div>/);
+      const timeMatch = html.match(/<span class="tweet-date"[^>]*><a[^>]*>([\s\S]*?)<\/a>/);
+
+      if (textMatch) {
+        const text = textMatch[1].replace(/<[^>]*>/g, '').trim();
+        const time = timeMatch ? timeMatch[1].trim() : '';
+        console.log(`   ✅ 获取成功`);
+        return {
+          text: `推文作者: ${username}\n\n发布时间: ${time}\n\n内容:\n${text.slice(0, 8000)}`,
+          originalText: text.slice(0, 8000),
+        };
+      }
+    } catch (e) {
+      console.log(`   ⚠️ Nitter 失败: ${e.message}`);
     }
 
-    console.log(`   🔐 使用 Cookie 调用 X GraphQL API...`);
-
-    // GraphQL 查询（与网页版一样）
-    const variables = {
-      tweetId: tweetId,
-      withCommunity: false,
-      includePromotedContent: false,
-      withVoice: false
-    };
-
-    const query = `query TweetDetail($tweetId: ID!) {
-      tweet(id: $tweetId) {
-        rest_id
-        core {
-          user_results {
-            result {
-              legacy {
-                created_at
-                name
-                screen_name
-              }
+    // 方案 2: 使用 Cookie 请求原站
+    const xCookie = config.x?.cookie;
+    if (xCookie) {
+      try {
+        console.log(`   🔐 尝试用 Cookie 请求...`);
+        const response = await axios.get(
+          `https://x.com/${username}/status/${tweetId}`,
+          {
+            timeout: 10000,
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+              'Cookie': xCookie,
+              'Referer': 'https://x.com/',
             }
           }
-        }
-        legacy {
-          created_at
-          full_text
-          favorite_count
-          retweet_count
-          reply_count
-        }
-      }
-    }`;
+        );
 
-    const response = await axios.post(
-      'https://x.com/i/api/graphql/2YmQdRfbDqtguAhc7M7YCA/TweetDetail',
-      {
-        variables: variables,
-        query: query
-      },
-      {
-        timeout: 15000,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Cookie': xCookie,
-          'x-csrf-token': xCt0,
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA%2FAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+        const html = response.data;
+        const textMatch = html.match(/"text":"([^"]*(?:\\.[^"]*)*)"/);
+        if (textMatch) {
+          const text = JSON.parse(`"${textMatch[1]}"`);
+          console.log(`   ✅ 获取成功`);
+          return {
+            text: `推文作者: ${username}\n\n内容:\n${text.slice(0, 8000)}`,
+            originalText: text.slice(0, 8000),
+          };
         }
+      } catch (e) {
+        console.log(`   ⚠️ Cookie 请求失败: ${e.message}`);
       }
-    );
-
-    const tweetData = response.data?.data?.tweet;
-    if (!tweetData) {
-      console.log(`   ⚠️ 推文未找到或已删除`);
-      return null;
     }
 
-    const legacy = tweetData.legacy || {};
-    const user = tweetData.core?.user_results?.result?.legacy || {};
-
-    const text = legacy.full_text || '（内容获取失败）';
-
-    console.log(`   ✅ 获取成功`);
-    return {
-      text: `推文作者: ${user.screen_name || username}\n\n发布时间: ${legacy.created_at || ''}\n\n内容:\n${text.slice(0, 8000)}`,
-      originalText: text.slice(0, 8000),
-    };
+    console.log(`   ⚠️ 无法获取推文内容`);
+    return null;
   } catch (error) {
     console.error(`   ❌ X 获取失败: ${error.message}`);
     return null;
