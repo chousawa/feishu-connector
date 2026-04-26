@@ -484,163 +484,104 @@ async function fetchXiaoyuzhou(url) {
 }
 
 /**
- * 获取 X (Twitter) 内容 - 使用 twitter-cli
+ * 获取 X (Twitter) 内容 - 用 Cookie 调用 GraphQL API
  */
 async function fetchX(url) {
   try {
-    const { execFile } = await import("child_process");
-    const { promisify } = await import("util");
-    const execFileAsync = promisify(execFile);
+    const { getConfig } = await import("./feishu.js");
+    const config = getConfig();
 
-    // 从 URL 提取用户名和 tweet ID
-    const userMatch = url.match(/(?:x\.com|twitter\.com)\/([^\/]+)/);
+    // 从 URL 提取信息
     const tweetIdMatch = url.match(/status\/(\d+)/);
+    const userMatch = url.match(/(?:x\.com|twitter\.com)\/([^\/]+)/);
 
     if (!tweetIdMatch || !userMatch) {
-      console.log(`   ⚠️ 无法从URL提取信息: ${url}`);
+      console.log(`   ⚠️ 无法解析URL`);
       return null;
     }
 
-    const username = userMatch[1];
     const tweetId = tweetIdMatch[1];
+    const username = userMatch[1];
 
-    console.log(`   📡 尝试 twitter-cli: @${username}/${tweetId}`);
+    // 检查是否有 X Cookie 配置
+    const xCookie = config.x?.cookie;
+    const xCt0 = config.x?.ct0;
 
-    try {
-      // 调用 twitter-cli 获取推文
-      const { stdout } = await execFileAsync('twitter', ['--filter', `${username}`, '--likes'], {
-        timeout: 30000,
-        maxBuffer: 1024 * 1024,
-      });
-
-      if (!stdout || stdout.length < 10) {
-        console.log(`   ⚠️ twitter-cli 无结果`);
-        return null;
-      }
-
-      // 简单处理输出
-      const lines = stdout.trim().split('\n');
-      const tweetText = lines.filter(l => l.trim().length > 0).slice(0, 5).join('\n');
-
-      if (tweetText && tweetText.length > 20) {
-        console.log(`   ✅ twitter-cli 获取成功`);
-        return {
-          text: `推文作者: ${username}\n\n内容:\n${tweetText.slice(0, 8000)}`,
-          originalText: tweetText.slice(0, 8000),
-        };
-      }
-    } catch (cliError) {
-      console.log(`   ⚠️ twitter-cli 获取失败: ${cliError.message}`);
+    if (!xCookie || !xCt0) {
+      console.log(`   ⚠️ 未配置 X Cookie，请先配置 config.json`);
+      return null;
     }
 
-    // 备选：用 oEmbed API
-    console.log(`   📡 尝试 oEmbed API...`);
-    try {
-      const oembedUrl = `https://publish.twitter.com/oembed?url=${encodeURIComponent(url)}&omit_script=true`;
-      const response = await axios.get(oembedUrl, {
-        timeout: 10000,
+    console.log(`   🔐 使用 Cookie 调用 X GraphQL API...`);
+
+    // GraphQL 查询（与网页版一样）
+    const variables = {
+      tweetId: tweetId,
+      withCommunity: false,
+      includePromotedContent: false,
+      withVoice: false
+    };
+
+    const query = `query TweetDetail($tweetId: ID!) {
+      tweet(id: $tweetId) {
+        rest_id
+        core {
+          user_results {
+            result {
+              legacy {
+                created_at
+                name
+                screen_name
+              }
+            }
+          }
+        }
+        legacy {
+          created_at
+          full_text
+          favorite_count
+          retweet_count
+          reply_count
+        }
+      }
+    }`;
+
+    const response = await axios.post(
+      'https://x.com/i/api/graphql/2YmQdRfbDqtguAhc7M7YCA/TweetDetail',
+      {
+        variables: variables,
+        query: query
+      },
+      {
+        timeout: 15000,
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        }
-      });
-      const data = response.data;
-
-      if (data && data.html) {
-        const textMatch = data.html.match(/<p[^>]*>([\s\S]*?)<\/p>/);
-        const tweetText = textMatch
-          ? textMatch[1].replace(/<[^>]+>/g, '').replace(/&[a-z]+;/g, '').trim()
-          : data.html.replace(/<[^>]+>/g, '').trim();
-
-        const author = data.author_name || username;
-
-        if (tweetText && tweetText.length > 5) {
-          console.log(`   ✅ oEmbed API 获取成功`);
-          return {
-            text: `推文作者: ${author}\n\n内容:\n${tweetText.slice(0, 8000)}`,
-            originalText: tweetText.slice(0, 8000),
-          };
+          'Cookie': xCookie,
+          'x-csrf-token': xCt0,
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA%2FAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
         }
       }
-    } catch (error) {
-      const errorMsg = error.response?.status ? `HTTP ${error.response.status}` : error.message;
-      console.log(`   ⚠️ oEmbed API 获取失败: ${errorMsg}`);
+    );
+
+    const tweetData = response.data?.data?.tweet;
+    if (!tweetData) {
+      console.log(`   ⚠️ 推文未找到或已删除`);
+      return null;
     }
 
-    console.log(`   ⚠️ 所有方案均失败`);
-    return null;
+    const legacy = tweetData.legacy || {};
+    const user = tweetData.core?.user_results?.result?.legacy || {};
+
+    const text = legacy.full_text || '（内容获取失败）';
+
+    console.log(`   ✅ 获取成功`);
+    return {
+      text: `推文作者: ${user.screen_name || username}\n\n发布时间: ${legacy.created_at || ''}\n\n内容:\n${text.slice(0, 8000)}`,
+      originalText: text.slice(0, 8000),
+    };
   } catch (error) {
-    console.error(`   X 内容获取失败: ${error.message}`);
-    return null;
-  }
-}
-
-/**
- * 网页爬取 X 内容（备选方案）
- */
-async function fetchXWithPlaywright(url) {
-  const { chromium } = await import("playwright");
-  const browser = await chromium.launch({
-    headless: true,
-  });
-  const context = await browser.newContext({
-    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-    viewport: { width: 1200, height: 800 },
-  });
-  const page = await context.newPage();
-
-  try {
-    console.log(`   🌐 Playwright 访问: ${url}`);
-
-    // 尝试访问，不等待完全加载
-    await Promise.race([
-      page.goto(url, { waitUntil: "load", timeout: 25000 }),
-      new Promise(r => setTimeout(r, 15000))
-    ]).catch(() => {});
-
-    await page.waitForTimeout(2000);
-
-    // 提取所有文本内容
-    const content = await page.evaluate(() => {
-      // 尝试多个选择器
-      const selectors = [
-        'article',
-        '[data-testid="tweet"]',
-        '[role="article"]',
-        'main',
-      ];
-
-      for (const selector of selectors) {
-        const el = document.querySelector(selector);
-        if (el) {
-          const text = el.innerText;
-          if (text && text.length > 20) return text;
-        }
-      }
-
-      return document.body.innerText;
-    });
-
-    await context.close();
-    await browser.close();
-
-    const cleanedText = content.replace(/[\r\n]{3,}/g, '\n').trim().slice(0, 2000);
-
-    if (cleanedText && cleanedText.length > 20) {
-      console.log(`   ✅ Playwright 爬取成功（${cleanedText.length} 字）`);
-      return {
-        text: `推文内容:\n${cleanedText}`,
-        originalText: cleanedText.slice(0, 8000),
-      };
-    }
-
-    console.log(`   ⚠️ Playwright 爬取内容过短`);
-    return null;
-  } catch (error) {
-    try {
-      await context.close();
-      await browser.close();
-    } catch {}
-    console.error(`   ❌ Playwright 爬取失败: ${error.message}`);
+    console.error(`   ❌ X 获取失败: ${error.message}`);
     return null;
   }
 }
