@@ -540,12 +540,13 @@ async function fetchXWithPlaywright(url) {
   const browser = await chromium.launch({
     headless: true,
   });
-  const page = await browser.newPage();
+  const context = await browser.newContext({
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+    viewport: { width: 1200, height: 800 },
+  });
+  const page = await context.newPage();
 
   try {
-    // 设置代理和 User-Agent 来规避反爬虫
-    await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36');
-    await page.setViewportSize({ width: 1200, height: 800 });
 
     // 尝试访问，不等待完全加载
     await Promise.race([
@@ -576,7 +577,7 @@ async function fetchXWithPlaywright(url) {
       return document.body.innerText;
     });
 
-    await page.close();
+    await context.close();
     await browser.close();
 
     const cleanedText = content.replace(/[\r\n]{3,}/g, '\n').trim().slice(0, 2000);
@@ -591,9 +592,7 @@ async function fetchXWithPlaywright(url) {
     return null;
   } catch (error) {
     try {
-      await page.close();
-    } catch {}
-    try {
+      await context.close();
       await browser.close();
     } catch {}
     console.error(`   Playwright 爬取失败: ${error.message}`);
