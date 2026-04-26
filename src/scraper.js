@@ -484,101 +484,119 @@ async function fetchXiaoyuzhou(url) {
 }
 
 /**
- * 获取 X (Twitter) 内容
+ * 获取 X (Twitter) 内容 - 尝试多种方案
  */
 async function fetchX(url) {
+  try {
+    // 先尝试用 oEmbed API（不需要认证）
+    const tweetIdMatch = url.match(/status\/(\d+)/);
+    if (!tweetIdMatch) {
+      console.log(`   ⚠️ 无法从URL提取tweet ID: ${url}`);
+      return null;
+    }
+    const tweetId = tweetIdMatch[1];
+
+    // 尝试 Twitter oEmbed API
+    try {
+      const oembedUrl = `https://publish.twitter.com/oembed?url=${encodeURIComponent(url)}&omit_script=true`;
+      const response = await axios.get(oembedUrl, { timeout: 10000 });
+      const data = response.data;
+
+      if (data && data.html) {
+        // 从 HTML 中提取文本
+        const textMatch = data.html.match(/<p[^>]*>([\s\S]*?)<\/p>/);
+        const tweetText = textMatch
+          ? textMatch[1].replace(/<[^>]+>/g, '').replace(/&[a-z]+;/g, '').trim()
+          : data.html.replace(/<[^>]+>/g, '').trim();
+
+        const author = data.author_name || 'Unknown Author';
+
+        if (tweetText && tweetText.length > 5) {
+          console.log(`   ✅ oEmbed API 获取成功`);
+          return {
+            text: `推文作者: ${author}\n\n内容:\n${tweetText.slice(0, 8000)}`,
+            originalText: tweetText.slice(0, 8000),
+          };
+        }
+      }
+    } catch (error) {
+      console.log(`   ⚠️ oEmbed API 获取失败: ${error.message}`);
+    }
+
+    // 备选：用 Playwright 爬取
+    console.log(`   ⚠️ 尝试用 Playwright 爬取`);
+    return await fetchXWithPlaywright(url);
+  } catch (error) {
+    console.error(`   X 内容获取失败: ${error.message}`);
+    return null;
+  }
+}
+
+/**
+ * 网页爬取 X 内容（备选方案）
+ */
+async function fetchXWithPlaywright(url) {
   const { chromium } = await import("playwright");
   const browser = await chromium.launch({
     headless: true,
-    args: ['--disable-blink-features=AutomationControlled']
   });
-  const context = await browser.newContext({
-    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-  });
-  const page = await context.newPage();
-
-  // 添加反爬虫规避
-  await page.addInitScript(() => {
-    Object.defineProperty(navigator, 'webdriver', {
-      get: () => false,
-    });
-  });
+  const page = await browser.newPage();
 
   try {
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
-    await page.waitForTimeout(3000);
+    // 设置代理和 User-Agent 来规避反爬虫
+    await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36');
+    await page.setViewportSize({ width: 1200, height: 800 });
 
-    const result = await page.evaluate(() => {
-      let author = "Unknown Author";
-      let tweetText = "";
-      let timestamp = new Date().toISOString();
+    // 尝试访问，不等待完全加载
+    await Promise.race([
+      page.goto(url, { waitUntil: "load", timeout: 25000 }),
+      new Promise(r => setTimeout(r, 15000))
+    ]).catch(() => {});
 
-      // 尝试多种方式获取推文信息
-      const articles = document.querySelectorAll('article');
+    await page.waitForTimeout(2000);
 
-      if (articles.length > 0) {
-        // 遍历所有 article，找到包含文本的最新一条
-        for (let i = 0; i < Math.min(articles.length, 3); i++) {
-          const article = articles[i];
+    // 提取所有文本内容
+    const content = await page.evaluate(() => {
+      // 尝试多个选择器
+      const selectors = [
+        'article',
+        '[data-testid="tweet"]',
+        '[role="article"]',
+        'main',
+      ];
 
-          // 尝试从 data-testid 获取文本
-          let textEl = article.querySelector('[data-testid="tweetText"]');
-          if (textEl) {
-            tweetText = textEl.innerText || "";
-          }
-
-          // 备选：直接从 p 标签获取
-          if (!tweetText) {
-            const pEl = article.querySelector('p');
-            if (pEl) tweetText = pEl.innerText || "";
-          }
-
-          if (tweetText && tweetText.length > 10) break;
-        }
-
-        // 获取作者名称
-        const authorLink = articles[0].querySelector('a[href*="/@"]');
-        if (authorLink) {
-          const href = authorLink.getAttribute('href');
-          author = href?.split('/').filter(Boolean).pop() || author;
-        }
-
-        // 获取时间戳
-        const timeEl = articles[0].querySelector('time');
-        if (timeEl) {
-          timestamp = timeEl.getAttribute('datetime') || timestamp;
+      for (const selector of selectors) {
+        const el = document.querySelector(selector);
+        if (el) {
+          const text = el.innerText;
+          if (text && text.length > 20) return text;
         }
       }
 
-      // 如果还是没有文本，尝试从整个 main 获取
-      if (!tweetText || tweetText.length < 10) {
-        const main = document.querySelector('main');
-        if (main) {
-          const allText = main.innerText;
-          // 取前 500 字作为备选
-          tweetText = allText.substring(0, 500) || tweetText;
-        }
-      }
-
-      return {
-        author: author.trim(),
-        text: tweetText.trim() || "（内容获取失败）",
-        timestamp: timestamp,
-        url: window.location.href,
-      };
+      return document.body.innerText;
     });
 
-    await context.close();
+    await page.close();
     await browser.close();
 
-    return {
-      text: `推文作者: ${result.author}\n\n发布时间: ${result.timestamp}\n\n内容:\n${result.text.slice(0, 8000)}`,
-      originalText: result.text.slice(0, 8000),
-    };
+    const cleanedText = content.replace(/[\r\n]{3,}/g, '\n').trim().slice(0, 2000);
+
+    if (cleanedText && cleanedText.length > 20) {
+      return {
+        text: `推文内容:\n${cleanedText}`,
+        originalText: cleanedText.slice(0, 8000),
+      };
+    }
+
+    return null;
   } catch (error) {
-    await context.close();
-    await browser.close();
-    console.error(`   X 内容获取失败: ${error.message}`);
+    try {
+      await page.close();
+    } catch {}
+    try {
+      await browser.close();
+    } catch {}
+    console.error(`   Playwright 爬取失败: ${error.message}`);
     return null;
   }
 }
