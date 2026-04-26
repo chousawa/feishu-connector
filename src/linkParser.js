@@ -14,7 +14,7 @@ const PLATFORM_PATTERNS = [
   { name: "知乎", pattern: /zhihu\.com|zhihu\.cn/i },
   { name: "掘金", pattern: /juejin\.cn|juejin\.im/i },
   { name: "即刻", pattern: /jike\.com/i },
-  { name: "Twitter", pattern: /twitter\.com|x\.com/i },
+  { name: "X", pattern: /twitter\.com|x\.com/i },
   { name: "GitHub", pattern: /github\.com/i },
   { name: "36氪", pattern: /36kr\.com/i },
 ];

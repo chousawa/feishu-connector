@@ -32,6 +32,8 @@ export async function fetchPageContent(url) {
         return await fetchWeibo(url);
       case "小宇宙":
         return await fetchXiaoyuzhou(url);
+      case "X":
+        return await fetchX(url);
       default:
         return await fetchGenericPage(url);
     }
@@ -467,6 +469,7 @@ async function fetchXiaoyuzhou(url) {
       return { title, description, author };
     });
 
+    await context.close();
     await browser.close();
 
     return {
@@ -474,8 +477,91 @@ async function fetchXiaoyuzhou(url) {
       originalText: result.description.slice(0, 8000),
     };
   } catch (error) {
+    await context.close();
     await browser.close();
     throw error;
+  }
+}
+
+/**
+ * 获取 X (Twitter) 内容
+ */
+async function fetchX(url) {
+  const { chromium } = await import("playwright");
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({
+    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  });
+  const page = await context.newPage();
+
+  try {
+    await page.goto(url, { waitUntil: "networkidle", timeout: 30000 });
+    await page.waitForTimeout(2000);
+
+    const result = await page.evaluate(() => {
+      const tweet = document.querySelector('article');
+
+      let author = "";
+      let tweetText = "";
+      let timestamp = "";
+
+      if (tweet) {
+        // 获取作者名称
+        const authorEl = tweet.querySelector('a[href*="/"] span') ||
+                         tweet.querySelector('[data-testid="tweet"] [role="link"]');
+        author = authorEl?.innerText || "";
+
+        // 获取推文文本
+        const textEl = tweet.querySelector('[data-testid="tweetText"]') ||
+                      tweet.querySelector('[lang]');
+        tweetText = textEl?.innerText || "";
+
+        // 获取时间戳
+        const timeEl = tweet.querySelector('time');
+        timestamp = timeEl?.getAttribute('datetime') || "";
+      }
+
+      // 如果上述方法失败，尝试备选方案
+      if (!tweetText) {
+        const mainContent = document.querySelector('main');
+        if (mainContent) {
+          const textDivs = mainContent.querySelectorAll('[data-testid="tweetText"]');
+          if (textDivs.length > 0) {
+            tweetText = textDivs[0]?.innerText || "";
+          }
+        }
+      }
+
+      // 尽力获取作者信息
+      if (!author) {
+        const profileLink = document.querySelector('a[href*="/@"]') ||
+                           document.querySelector('[data-testid="tweet"] a[href*="/"]');
+        if (profileLink) {
+          const href = profileLink.getAttribute('href');
+          author = href?.replace(/.*\/@?/, '') || "Unknown Author";
+        }
+      }
+
+      return {
+        author: author.trim() || "Unknown Author",
+        text: tweetText.trim() || "（内容获取失败）",
+        timestamp: timestamp || new Date().toISOString(),
+        url: window.location.href,
+      };
+    });
+
+    await context.close();
+    await browser.close();
+
+    return {
+      text: `推文作者: ${result.author}\n\n发布时间: ${result.timestamp}\n\n内容:\n${result.text.slice(0, 8000)}`,
+      originalText: result.text.slice(0, 8000),
+    };
+  } catch (error) {
+    await context.close();
+    await browser.close();
+    console.error(`   X 内容获取失败: ${error.message}`);
+    return null;
   }
 }
 
