@@ -488,64 +488,82 @@ async function fetchXiaoyuzhou(url) {
  */
 async function fetchX(url) {
   const { chromium } = await import("playwright");
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({
+    headless: true,
+    args: ['--disable-blink-features=AutomationControlled']
+  });
   const context = await browser.newContext({
-    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
   });
   const page = await context.newPage();
 
+  // 添加反爬虫规避
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'webdriver', {
+      get: () => false,
+    });
+  });
+
   try {
-    await page.goto(url, { waitUntil: "networkidle", timeout: 30000 });
-    await page.waitForTimeout(2000);
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+    await page.waitForTimeout(3000);
 
     const result = await page.evaluate(() => {
-      const tweet = document.querySelector('article');
-
-      let author = "";
+      let author = "Unknown Author";
       let tweetText = "";
-      let timestamp = "";
+      let timestamp = new Date().toISOString();
 
-      if (tweet) {
+      // 尝试多种方式获取推文信息
+      const articles = document.querySelectorAll('article');
+
+      if (articles.length > 0) {
+        // 遍历所有 article，找到包含文本的最新一条
+        for (let i = 0; i < Math.min(articles.length, 3); i++) {
+          const article = articles[i];
+
+          // 尝试从 data-testid 获取文本
+          let textEl = article.querySelector('[data-testid="tweetText"]');
+          if (textEl) {
+            tweetText = textEl.innerText || "";
+          }
+
+          // 备选：直接从 p 标签获取
+          if (!tweetText) {
+            const pEl = article.querySelector('p');
+            if (pEl) tweetText = pEl.innerText || "";
+          }
+
+          if (tweetText && tweetText.length > 10) break;
+        }
+
         // 获取作者名称
-        const authorEl = tweet.querySelector('a[href*="/"] span') ||
-                         tweet.querySelector('[data-testid="tweet"] [role="link"]');
-        author = authorEl?.innerText || "";
-
-        // 获取推文文本
-        const textEl = tweet.querySelector('[data-testid="tweetText"]') ||
-                      tweet.querySelector('[lang]');
-        tweetText = textEl?.innerText || "";
+        const authorLink = articles[0].querySelector('a[href*="/@"]');
+        if (authorLink) {
+          const href = authorLink.getAttribute('href');
+          author = href?.split('/').filter(Boolean).pop() || author;
+        }
 
         // 获取时间戳
-        const timeEl = tweet.querySelector('time');
-        timestamp = timeEl?.getAttribute('datetime') || "";
-      }
-
-      // 如果上述方法失败，尝试备选方案
-      if (!tweetText) {
-        const mainContent = document.querySelector('main');
-        if (mainContent) {
-          const textDivs = mainContent.querySelectorAll('[data-testid="tweetText"]');
-          if (textDivs.length > 0) {
-            tweetText = textDivs[0]?.innerText || "";
-          }
+        const timeEl = articles[0].querySelector('time');
+        if (timeEl) {
+          timestamp = timeEl.getAttribute('datetime') || timestamp;
         }
       }
 
-      // 尽力获取作者信息
-      if (!author) {
-        const profileLink = document.querySelector('a[href*="/@"]') ||
-                           document.querySelector('[data-testid="tweet"] a[href*="/"]');
-        if (profileLink) {
-          const href = profileLink.getAttribute('href');
-          author = href?.replace(/.*\/@?/, '') || "Unknown Author";
+      // 如果还是没有文本，尝试从整个 main 获取
+      if (!tweetText || tweetText.length < 10) {
+        const main = document.querySelector('main');
+        if (main) {
+          const allText = main.innerText;
+          // 取前 500 字作为备选
+          tweetText = allText.substring(0, 500) || tweetText;
         }
       }
 
       return {
-        author: author.trim() || "Unknown Author",
+        author: author.trim(),
         text: tweetText.trim() || "（内容获取失败）",
-        timestamp: timestamp || new Date().toISOString(),
+        timestamp: timestamp,
         url: window.location.href,
       };
     });
