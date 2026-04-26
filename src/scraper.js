@@ -499,7 +499,13 @@ async function fetchX(url) {
     // 尝试 Twitter oEmbed API
     try {
       const oembedUrl = `https://publish.twitter.com/oembed?url=${encodeURIComponent(url)}&omit_script=true`;
-      const response = await axios.get(oembedUrl, { timeout: 10000 });
+      console.log(`   📡 尝试 oEmbed API...`);
+      const response = await axios.get(oembedUrl, {
+        timeout: 10000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        }
+      });
       const data = response.data;
 
       if (data && data.html) {
@@ -520,7 +526,8 @@ async function fetchX(url) {
         }
       }
     } catch (error) {
-      console.log(`   ⚠️ oEmbed API 获取失败: ${error.message}`);
+      const errorMsg = error.response?.status ? `HTTP ${error.response.status}` : error.message;
+      console.log(`   ⚠️ oEmbed API 获取失败: ${errorMsg}`);
     }
 
     // 备选：用 Playwright 爬取
@@ -547,6 +554,7 @@ async function fetchXWithPlaywright(url) {
   const page = await context.newPage();
 
   try {
+    console.log(`   🌐 Playwright 访问: ${url}`);
 
     // 尝试访问，不等待完全加载
     await Promise.race([
@@ -583,19 +591,21 @@ async function fetchXWithPlaywright(url) {
     const cleanedText = content.replace(/[\r\n]{3,}/g, '\n').trim().slice(0, 2000);
 
     if (cleanedText && cleanedText.length > 20) {
+      console.log(`   ✅ Playwright 爬取成功（${cleanedText.length} 字）`);
       return {
         text: `推文内容:\n${cleanedText}`,
         originalText: cleanedText.slice(0, 8000),
       };
     }
 
+    console.log(`   ⚠️ Playwright 爬取内容过短`);
     return null;
   } catch (error) {
     try {
       await context.close();
       await browser.close();
     } catch {}
-    console.error(`   Playwright 爬取失败: ${error.message}`);
+    console.error(`   ❌ Playwright 爬取失败: ${error.message}`);
     return null;
   }
 }
