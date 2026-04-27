@@ -85,7 +85,7 @@ pip3 install douyin-mcp-server  # 小红书内容解析
 cp config.example.json config.json
 ```
 
-编辑 `config.json`，填入你的配置：
+编辑 `config.json`，参考 `config.example.json` 填入你的配置。**必填项：**
 
 ```json
 {
@@ -96,34 +96,39 @@ cp config.example.json config.json
   },
   "bitable": {
     "app_token": "xxxxx",
-    "table_id": "xxxxx"
-  },
-  "dashscope": {
-    "api_key": "sk-xxxxx"
+    "table_id": "tbl_xxxxx"
   },
   "minimax": {
     "api_key": "your-api-key",
     "base_url": "https://api.minimaxi.com/anthropic",
-    "model": "MiniMax-M2.5"
+    "model": "MiniMax-M2.7"
   }
 }
 ```
 
-**配置说明：**
+**必填项配置说明：**
 - `feishu.app_id` / `app_secret` - 在[飞书开放平台](https://open.feishu.cn/)应用详情的"凭证与基础信息"获取
 - `feishu.chat_id` - 飞书群设置底部的"会话ID"
-- `bitable.app_token` / `table_id` - 多维表格 URL 中的参数（示例：`https://xxx.feishu.cn/bitable/appTokenxxxxx?table_id=tblxxxxx`）
-- `dashscope.api_key` - 在[阿里云百炼](https://bailian.console.aliyun.com/)获取，用于小红书视频转录和图片 OCR，新用户有免费额度
+- `bitable.app_token` / `table_id` - 多维表格 URL 中的参数（示例：`https://xxx.feishu.cn/bitable/appTokenxxxxx?table_id=tblxxxxx`）；用于被动收集的数据表
 - `minimax.api_key` - 在 [MiniMax 开放平台](https://platform.minimaxi.com/) 获取，用于 AI 内容分析
+
+**可选项配置说明：**
+- `dashscope.api_key` - 在[阿里云百炼](https://bailian.console.aliyun.com/)获取，用于小红书视频转录和图片 OCR；新用户有免费额度；不配置时视频/图片原文功能不可用
+- `kimi.api_key` - 在 [Kimi 开放平台](https://platform.moonshot.cn/) 获取，可作为 MiniMax 的替代内容分析器；如果配置则优先使用 Kimi
+- `x.cookie` / `x.ct0` - X.com 登录 Cookie（仅在订阅自定义 X/Twitter 用户时需要）；获取方法见下面"X/Twitter 自定义源配置"章节
 
 > **config.json 不随 git 推送**（在 .gitignore 中），更新后需手动同步到服务器：
 > ```bash
 > scp config.json user@your-server:/path/to/feishu-connector/config.json
 > ```
 
-### 5. 配置订阅源（可选）
+### 5. 配置主动订阅（可选）
 
-如果要使用主动订阅功能，在飞书多维表格中创建「订阅配置表」，添加以下字段：
+如果要使用定时自动订阅功能，需要在飞书多维表格中创建「订阅配置表」。
+
+**创建订阅配置表：**
+1. 在与被动收集相同的 App（`bitable.app_token`）中新建一个 table
+2. 添加以下字段：
 
 | 字段名 | 类型 | 说明 |
 |-------|------|------|
@@ -134,32 +139,38 @@ cp config.example.json config.json
 | 来自 Follow Builders | 单选 | 是 / 否 |
 | 简介 | 文本 | 源的描述 |
 
-然后在 `config.json` 中添加：
+**更新 config.json：**
 
 ```json
 {
   "subscription": {
-    "config_table_id": "tbl_xxxxx",    // 订阅配置表 ID
-    "table_id": "tbl_xxxxx"            // 订阅内容表 ID（与被动收集共用）
+    "config_table_id": "tbl_xxxxx",    // 上面创建的订阅配置表 ID
+    "table_id": "tbl_xxxxx"            // 订阅内容表 ID（可与被动收集共用，或单独创建）
   }
 }
 ```
 
+> 两个 table_id 可以相同（共用同一个表），也可以分开（订阅内容单独保存）
+
 ### 6. 运行
+
+**本地开发运行：**
 
 ```bash
 # 被动收集模式（实时监听）
 npm run listen
 
-# 或手动触发一次
+# 手动触发一次扫描群内未处理链接
 npm run trigger
 
 # 主动订阅模式（立即执行一次，用于测试）
-node src/subscriber.js --run-now
+npm run subscribe-now
 
 # 主动订阅模式（常驻运行，每天 00:00 自动执行）
-node src/subscriber.js
+npm run subscribe
 ```
+
+> npm scripts 在 package.json 中定义，通常推荐在本地开发时使用；服务器生产环境推荐用 PM2（见下面"服务器部署"章节）
 
 ## 使用方法
 
@@ -311,19 +322,20 @@ CMD ["node", "src/listener.js"]
 ```
 feishu-connector/
 ├── src/
-│   ├── listener.js              # 被动收集：飞书长连接监听，消息路由
-│   ├── subscriber.js            # 主动订阅：定时抓取调度，多源内容获取 ✨ 新增
-│   ├── feishu.js                # 飞书 API 封装（含 URL 去重）
-│   ├── scraper.js               # 网页内容抓取（X、小红书、微博、通用博客）
-│   ├── analyzer.js              # AI 内容分析
-│   ├── linkParser.js            # 链接提取与平台识别
-│   ├── index.js                 # 手动触发入口
-│   ├── backfill-xhs.js          # 小红书历史记录回填工具
-│   └── backfill-xhs-transcript.js  # 历史视频转录回填工具
+│   ├── listener.js                  # 被动收集：飞书长连接监听，消息路由
+│   ├── subscriber.js                # 主动订阅：定时抓取调度，多源内容获取 ✨
+│   ├── feishu.js                    # 飞书 API 封装（含 URL 去重、订阅表管理）
+│   ├── scraper.js                   # 网页内容抓取（X、小红书、微博、通用博客）
+│   ├── analyzer.js                  # AI 内容分析（MiniMax / Kimi）
+│   ├── linkParser.js                # 链接提取与平台识别
+│   ├── index.js                     # 手动触发入口
+│   ├── backfill-xhs.js              # 小红书历史记录回填工具
+│   └── backfill-xhs-transcript.js   # 历史视频转录回填工具
 ├── scripts/
-│   └── populate-bios.js         # 为订阅源填充简介
-├── ecosystem.config.cjs         # PM2 配置（两个进程：collector + subscriber）
-├── config.example.json
+│   └── populate-bios.js             # 为订阅源填充简介（从 Follow Builders feed）
+├── ecosystem.config.cjs             # PM2 配置（两个进程：feishu-collector + feishu-subscriber）
+├── feed-x.json                      # Follow Builders 内置源列表（自动读取，无硬编码）
+├── config.example.json              # 配置文件模板
 ├── package.json
 └── README.md
 ```
@@ -378,6 +390,10 @@ A: X.com 现在要求登录，需要配置有效的 Cookie。步骤：
 3. 刷新页面，查看任意请求的 Request Headers 中的 Cookie
 4. 复制 Cookie 值到 `config.json` 的 `x.cookie`
 5. Cookie 会定期失效，需要定期更新
+6. 重启订阅进程以使配置生效
+
+**Q: 内容分析用 MiniMax 还是 Kimi？**
+A: 系统默认使用 MiniMax（必填）。如果配置了 `kimi.api_key`，则会优先使用 Kimi 进行内容分析。两者兼容 Anthropic API 格式，任选其一或都配置。
 
 ## 许可证
 
