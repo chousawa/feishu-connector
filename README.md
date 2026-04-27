@@ -4,6 +4,7 @@
 
 ## 功能特性
 
+### 被动收集（Listener）
 - 📡 实时监听飞书群消息，发链接即自动触发收集
 - 🤖 AI 分析内容（标题、摘要、分类、优先级）
 - 📊 自动写入飞书多维表格
@@ -12,6 +13,14 @@
 - 💬 引用消息补充想法，自动追加到表格"我的想法"字段
 - 🔄 支持手动发"收集"触发全量扫描
 - ⚡ AI 限流自动重试，WS 断连自动重启
+
+### 主动订阅（Subscriber）✨ 新增
+- 📅 每天 00:00 自动抓取订阅源的最新内容
+- 🏗️ 支持 Follow Builders 内置源（25 个 X builders + 6 个 podcasts + 2 个 official blogs）
+- 🔗 支持自定义 URL 源（X/Twitter、小红书、微博、通用博客）
+- 🧠 自动内容分析和分类（同被动收集）
+- 🚫 智能 URL 去重，避免重复收集
+- 📢 抓取完成自动发送飞书群通知
 - ☁️ 支持服务器部署（PM2）
 
 ## 快速开始
@@ -112,19 +121,49 @@ cp config.example.json config.json
 > scp config.json user@your-server:/path/to/feishu-connector/config.json
 > ```
 
-### 5. 运行
+### 5. 配置订阅源（可选）
+
+如果要使用主动订阅功能，在飞书多维表格中创建「订阅配置表」，添加以下字段：
+
+| 字段名 | 类型 | 说明 |
+|-------|------|------|
+| 平台 | 文本 | X / Podcast / Blog / 其他 |
+| user_url | 文本 | 用户主页或博客 URL |
+| 上次抓取时间戳 | 文本 | Unix 时间戳（自动更新，首次填 0） |
+| 是否启用 | 单选 | 启用 / 停用 |
+| 来自 Follow Builders | 单选 | 是 / 否 |
+| 简介 | 文本 | 源的描述 |
+
+然后在 `config.json` 中添加：
+
+```json
+{
+  "subscription": {
+    "config_table_id": "tbl_xxxxx",    // 订阅配置表 ID
+    "table_id": "tbl_xxxxx"            // 订阅内容表 ID（与被动收集共用）
+  }
+}
+```
+
+### 6. 运行
 
 ```bash
-# 开发模式（终端运行）
+# 被动收集模式（实时监听）
 npm run listen
 
-# 或手动触发一次收集
+# 或手动触发一次
 npm run trigger
+
+# 主动订阅模式（立即执行一次，用于测试）
+node src/subscriber.js --run-now
+
+# 主动订阅模式（常驻运行，每天 00:00 自动执行）
+node src/subscriber.js
 ```
 
 ## 使用方法
 
-### 基本使用
+### 被动收集（发链接自动收集）
 
 1. 将机器人添加到飞书群
 2. 在群里直接发送链接，机器人自动触发收集
@@ -133,6 +172,21 @@ npm run trigger
 **触发关键词：** `收集`、`抓取`、`处理`、`开始`
 
 **停止服务：** 发送"停止"
+
+### 主动订阅（定时抓取）
+
+配置好订阅源后，系统会每天 00:00 自动抓取最新内容。
+
+**支持的信源：**
+- **Follow Builders**（预置）：25 个知名 X builders、6 个 AI 播客、2 个官方博客
+- **自定义 URL**：任意 X 用户、小红书账号、微博账号、个人博客
+
+**自动去重：** 同一篇文章不会被重复收集到表格中，即使多次扫描也不会产生重复记录。
+
+**手动测试：**
+```bash
+node src/subscriber.js --run-now  # 立即执行一次（不等待 00:00）
+```
 
 ### 补充想法
 
@@ -181,8 +235,14 @@ pip3 install douyin-mcp-server
 # 安装 PM2
 npm install -g pm2
 
-# 启动
+# 启动所有进程（被动收集 + 主动订阅）
+pm2 start ecosystem.config.cjs
+
+# 仅启动被动收集
 pm2 start src/listener.js --name feishu-collector
+
+# 仅启动主动订阅
+pm2 start src/subscriber.js --name feishu-subscriber
 
 # 设置开机自启
 pm2 startup
@@ -193,8 +253,20 @@ pm2 save
 
 ```bash
 pm2 list                                          # 查看状态
-pm2 logs feishu-collector --lines 50 --nostream   # 查看日志
-pm2 restart feishu-collector                      # 重启服务
+pm2 logs feishu-collector --lines 50 --nostream   # 查看被动收集日志
+pm2 logs feishu-subscriber --lines 50 --nostream  # 查看主动订阅日志
+pm2 restart feishu-collector                      # 重启被动收集
+pm2 restart feishu-subscriber                     # 重启主动订阅
+```
+
+**定时任务检查：**
+
+为了确保定时任务可靠性，建议每周检查一次进程状态：
+
+```bash
+pm2 list
+# 如果进程显示 stopped，执行重启
+pm2 restart feishu-subscriber
 ```
 
 ### Docker 部署
@@ -214,20 +286,26 @@ CMD ["node", "src/listener.js"]
 ```
 feishu-connector/
 ├── src/
-│   ├── listener.js              # 飞书长连接监听，消息路由
-│   ├── feishu.js                # 飞书 API 封装
-│   ├── scraper.js               # 网页内容抓取（含小红书视频转录、图片 OCR）
+│   ├── listener.js              # 被动收集：飞书长连接监听，消息路由
+│   ├── subscriber.js            # 主动订阅：定时抓取调度，多源内容获取 ✨ 新增
+│   ├── feishu.js                # 飞书 API 封装（含 URL 去重）
+│   ├── scraper.js               # 网页内容抓取（X、小红书、微博、通用博客）
 │   ├── analyzer.js              # AI 内容分析
 │   ├── linkParser.js            # 链接提取与平台识别
 │   ├── index.js                 # 手动触发入口
 │   ├── backfill-xhs.js          # 小红书历史记录回填工具
 │   └── backfill-xhs-transcript.js  # 历史视频转录回填工具
+├── scripts/
+│   └── populate-bios.js         # 为订阅源填充简介
+├── ecosystem.config.cjs         # PM2 配置（两个进程：collector + subscriber）
 ├── config.example.json
 ├── package.json
 └── README.md
 ```
 
 ## 常见问题
+
+### 被动收集相关
 
 **Q: 收不到群消息？**
 A: 检查应用是否已发布，事件订阅是否配置正确，机器人是否已加入群聊。
@@ -246,6 +324,27 @@ A: 检查以下几点：
 
 **Q: 引用补充想法没有写入？**
 A: 确认被引用的链接已经收集到表格中，且引用时不要包含触发关键词。
+
+### 主动订阅相关
+
+**Q: 订阅源配置在哪里？**
+A: 在飞书多维表格中创建新的「订阅配置表」，将表 ID 填入 `config.json` 的 `subscription.config_table_id`。
+
+**Q: 订阅内容写入哪个表？**
+A: 默认写入 `subscription.table_id` 指定的表，可以与被动收集共用同一个表。
+
+**Q: 订阅怎么去重？**
+A: 系统会自动检查 URL 是否已存在，重复的内容不会被写入。
+
+**Q: 定时任务没有执行？**
+A: 检查以下几点：
+1. PM2 进程是否在线：`pm2 list`
+2. 查看日志：`pm2 logs feishu-subscriber --lines 50 --nostream`
+3. 确认 `config.json` 中 `subscription` 配置正确
+4. 尝试手动触发：`node src/subscriber.js --run-now`
+
+**Q: Follow Builders 源如何更新？**
+A: 将最新的 `feed-x.json` 放在 `/tmp/follow-builders/` 或项目目录中，subscriber.js 会自动读取最新数据。
 
 ## 许可证
 
