@@ -28,8 +28,8 @@
 ### 1. 克隆项目
 
 ```bash
-git clone https://github.com/chousawa/feishu-connector.git
-cd feishu-connector
+git clone https://github.com/chousawa/feishu-link-hub.git
+cd feishu-link-hub
 ```
 
 ### 2. 安装依赖
@@ -119,7 +119,7 @@ cp config.example.json config.json
 
 > **config.json 不随 git 推送**（在 .gitignore 中），更新后需手动同步到服务器：
 > ```bash
-> scp config.json user@your-server:/path/to/feishu-connector/config.json
+> scp config.json user@your-server:/path/to/feishu-link-hub/config.json
 > ```
 
 ### 5. 配置主动订阅（可选）
@@ -320,7 +320,7 @@ CMD ["node", "src/listener.js"]
 ## 项目结构
 
 ```
-feishu-connector/
+feishu-link-hub/
 ├── src/
 │   ├── listener.js                  # 被动收集：飞书长连接监听，消息路由
 │   ├── subscriber.js                # 主动订阅：定时抓取调度，多源内容获取 ✨
