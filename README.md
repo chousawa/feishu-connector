@@ -179,7 +179,32 @@ node src/subscriber.js
 
 **支持的信源：**
 - **Follow Builders**（预置）：25 个知名 X builders、6 个 AI 播客、2 个官方博客
-- **自定义 URL**：任意 X 用户、小红书账号、微博账号、个人博客
+- **自定义 URL**：
+  - **小红书**：账号主页 URL（无需额外认证）
+  - **微博**：账号主页 URL（无需额外认证）
+  - **个人博客**：支持通用博客爬虫（日期或 slug 格式）
+  - **X/Twitter**：需要有效的 Cookie 认证（`config.json` 中的 `x.cookie`）
+
+#### X/Twitter 自定义源配置
+
+如果要订阅自定义的 X/Twitter 用户，需要先获取有效的 Cookie：
+
+1. 在浏览器中登录 X.com
+2. 打开浏览器开发工具（F12） → Network 标签
+3. 刷新页面，查看任意请求的 Request Headers 中的 `Cookie` 字段
+4. 复制整个 Cookie 字符串，粘贴到 `config.json` 的 `x.cookie` 字段
+
+**示例：**
+```json
+{
+  "x": {
+    "cookie": "auth_token=xxxxx; ct0=xxxxx; other=xxxxx...",
+    "ct0": "xxxxx"
+  }
+}
+```
+
+> **注意**：Cookie 会定期失效，需要定期更新。如果 X 用户主页无法访问，尝试重新获取 Cookie。
 
 **自动去重：** 同一篇文章不会被重复收集到表格中，即使多次扫描也不会产生重复记录。
 
@@ -345,6 +370,14 @@ A: 检查以下几点：
 
 **Q: Follow Builders 源如何更新？**
 A: 将最新的 `feed-x.json` 放在 `/tmp/follow-builders/` 或项目目录中，subscriber.js 会自动读取最新数据。
+
+**Q: X/Twitter 自定义源无法访问？**
+A: X.com 现在要求登录，需要配置有效的 Cookie。步骤：
+1. 浏览器登录 X.com
+2. F12 打开开发工具 → Network 标签
+3. 刷新页面，查看任意请求的 Request Headers 中的 Cookie
+4. 复制 Cookie 值到 `config.json` 的 `x.cookie`
+5. Cookie 会定期失效，需要定期更新
 
 ## 许可证
 

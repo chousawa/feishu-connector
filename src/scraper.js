@@ -724,25 +724,47 @@ export async function fetchUserFeed(userUrl, sinceTimestamp = 0) {
 }
 
 /**
- * X / Twitter 用户主页列表（用 Playwright 渲染）
+ * X / Twitter 用户主页列表（需要 Cookie 认证）
+ * 注意：X.com 现在要求登录，必须使用有效的 Cookie
  */
 async function fetchXUserFeed(userUrl, sinceTimestamp) {
   const { chromium } = await import("playwright");
+  const { getConfig } = await import("./feishu.js");
   const posts = [];
-  const MAX_POSTS = 5; // 限制最多抓取5条以避免被限流
+  const MAX_POSTS = 5;
+
+  const config = getConfig();
+  const xCookie = config.x?.cookie;
+
+  // 检查是否有 Cookie
+  if (!xCookie) {
+    console.log(`   ⚠️ X 订阅需要有效的 Cookie，请在 config.json 中配置 x.cookie`);
+    return [];
+  }
 
   let browser;
   try {
     browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage();
+    const context = await browser.newContext({
+      extraHTTPHeaders: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      },
+    });
 
-    // X.com 加载较慢，用较长超时和 load 等待策略
-    await page.goto(userUrl, { waitUntil: "load", timeout: 60000 });
+    // 设置 Cookie
+    const cookies = xCookie.split(';').map(pair => {
+      const [name, value] = pair.trim().split('=');
+      return { name: name.trim(), value: value?.trim() || '', domain: 'x.com', path: '/' };
+    });
 
-    // 等待内容加载
-    await page.waitForTimeout(3000);
+    await context.addCookies(cookies);
+    const page = await context.newPage();
 
-    // 提取推文链接（取前MAX_POSTS条）
+    console.log(`   🔐 使用 Cookie 访问 X 用户主页...`);
+    await page.goto(userUrl, { waitUntil: "networkidle", timeout: 60000 });
+    await page.waitForTimeout(2000);
+
+    // 提取推文链接
     const tweetUrls = await page.evaluate(() => {
       const urls = [];
       const links = document.querySelectorAll('a[href*="/status/"]');
@@ -760,6 +782,7 @@ async function fetchXUserFeed(userUrl, sinceTimestamp) {
     });
 
     console.log(`   ✅ 从 X 用户主页抓取到 ${posts.length} 条推文`);
+    await context.close();
   } catch (e) {
     console.error(`   ❌ X 用户主页抓取失败: ${e.message}`);
   } finally {
