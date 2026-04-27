@@ -1,7 +1,7 @@
 {
-  "name": "feishu-connector",
+  "name": "feishu-link-hub",
   "version": "1.0.0",
-  "description": "飞书信息收集助手 - 从飞书群收集链接并整理到多维表格",
+  "description": "飞书链接聚合中心 - 被动收集和主动订阅，一站式链接整理和内容分析",
   "main": "src/index.js",
   "type": "module",
   "scripts": {
