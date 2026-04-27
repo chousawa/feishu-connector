@@ -11,6 +11,7 @@ import {
   getSubscriptions,
   updateLastFetchTime,
   writeToSubscriptionTable,
+  sendMessage,
 } from "./feishu.js";
 import { fetchPageContent, fetchUserFeed } from "./scraper.js";
 import { analyzeContent } from "./analyzer.js";
@@ -87,6 +88,9 @@ function getTimeUntilNextRun() {
  */
 async function runSubscriptionCycle() {
   console.log(`\n📅 开始订阅内容抓取循环 (${new Date().toISOString()})\n`);
+
+  let totalCount = 0;
+  const startTime = Date.now();
 
   try {
     const subscriptions = await getSubscriptions();
@@ -195,8 +199,11 @@ async function runSubscriptionCycle() {
             };
 
             // 写入订阅内容表
-            await writeToSubscriptionTable(record);
-            successCount++;
+            const written = await writeToSubscriptionTable(record);
+            if (written) {
+              successCount++;
+              totalCount++;
+            }
           } catch (postError) {
             console.error(`   ❌ 处理帖子失败: ${postError.message}`);
           }
@@ -216,6 +223,19 @@ async function runSubscriptionCycle() {
     }
 
     console.log(`\n✅ 订阅内容抓取循环完成 (${new Date().toISOString()})\n`);
+
+    // 发送完成提示到飞书群
+    if (totalCount > 0) {
+      const duration = Math.round((Date.now() - startTime) / 1000);
+      const message = `📬 订阅内容更新完成\n共计 ${totalCount} 条新内容\n耗时 ${duration} 秒`;
+      try {
+        const chatId = config.feishu.chat_id;
+        await sendMessage(chatId, message);
+        console.log("✅ 已发送完成提示到飞书群\n");
+      } catch (e) {
+        console.warn(`⚠️ 发送飞书群提示失败: ${e.message}\n`);
+      }
+    }
   } catch (error) {
     console.error(`❌ 抓取循环出错: ${error.message}`);
   }

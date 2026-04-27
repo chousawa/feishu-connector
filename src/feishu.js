@@ -584,10 +584,61 @@ export async function updateLastFetchTime(recordId, timestamp) {
 /**
  * 写入订阅内容表
  */
+/**
+ * 检查 URL 是否已在订阅内容表中存在
+ */
+export async function urlExistsInSubscriptionTable(url) {
+  const cfg = getConfig();
+  const token = await getTenantAccessToken();
+  const subscriptionTableId = cfg.subscription.table_id;
+
+  try {
+    let pageToken = null;
+    do {
+      const params = { page_size: 100 };
+      if (pageToken) params.page_token = pageToken;
+
+      const listResp = await axios.get(
+        `https://open.feishu.cn/open-apis/bitable/v1/apps/${cfg.bitable.app_token}/tables/${subscriptionTableId}/records`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          params,
+        }
+      );
+
+      if (listResp.data?.data?.items) {
+        const found = listResp.data.data.items.some(record => {
+          const linkField = record.fields["链接"];
+          // 链接字段可能是字符串或对象格式
+          const recordUrl = typeof linkField === "string" ? linkField : linkField?.url;
+          return recordUrl === url;
+        });
+
+        if (found) return true;
+        pageToken = listResp.data?.data?.page_token;
+      } else {
+        break;
+      }
+    } while (pageToken);
+
+    return false;
+  } catch (error) {
+    console.error("检查 URL 存在性失败:", error.message);
+    return false;
+  }
+}
+
 export async function writeToSubscriptionTable(record) {
   const cfg = getConfig();
   const token = await getTenantAccessToken();
   const subscriptionTableId = cfg.subscription.table_id;
+
+  // 检查 URL 去重
+  const exists = await urlExistsInSubscriptionTable(record.url);
+  if (exists) {
+    console.log(`⏭️ URL 已存在，跳过: ${record.url}`);
+    return null;
+  }
 
   const fields = {
     "链接": { text: record.url, url: record.url || "" },
@@ -642,4 +693,5 @@ export default {
   getSubscriptions,
   updateLastFetchTime,
   writeToSubscriptionTable,
+  urlExistsInSubscriptionTable,
 };
