@@ -8,6 +8,12 @@
     "start": "node src/index.js",
     "listen": "node src/listener.js",
     "trigger": "node src/index.js --trigger",
+    "subscribe": "node src/subscriber.js",
+    "subscribe-now": "node src/subscriber.js --run-now",
+    "pm2-start": "pm2 start ecosystem.config.js",
+    "pm2-stop": "pm2 stop all",
+    "pm2-restart": "pm2 restart all",
+    "pm2-logs": "pm2 logs",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [

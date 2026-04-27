@@ -6,7 +6,11 @@
   },
   "bitable": {
     "app_token": "你的多维表格App Token",
-    "table_id": "你的多维表格Table ID"
+    "table_id": "你的多维表格Table ID（主收集表）"
+  },
+  "subscription": {
+    "table_id": "订阅内容表 Table ID",
+    "config_table_id": "订阅配置表 Table ID"
   },
   "minimax": {
     "api_key": "你的MiniMax API Key",

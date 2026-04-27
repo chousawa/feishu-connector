@@ -509,6 +509,123 @@ export async function appendThought(recordId, existingThoughts, newThought) {
   return updateBitableRecord(recordId, { "我的想法": merged });
 }
 
+/**
+ * 获取订阅配置表中所有启用的订阅配置
+ */
+export async function getSubscriptions() {
+  const cfg = getConfig();
+  const token = await getTenantAccessToken();
+  const configTableId = cfg.subscription.config_table_id;
+  const allRecords = [];
+  let pageToken = null;
+
+  try {
+    do {
+      const params = { page_size: 100 };
+      if (pageToken) params.page_token = pageToken;
+
+      const response = await axios.get(
+        `https://open.feishu.cn/open-apis/bitable/v1/apps/${cfg.bitable.app_token}/tables/${configTableId}/records`,
+        {
+          params,
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      if (response.data?.data?.items) {
+        allRecords.push(...response.data.data.items);
+        pageToken = response.data.data.page_token || null;
+      } else {
+        break;
+      }
+    } while (pageToken);
+
+    // 过滤启用的配置（是否启用 = 启用）
+    return allRecords.filter(record => {
+      const enabledField = record.fields?.["是否启用"];
+      return enabledField === "启用" || enabledField?.[0]?.text === "启用";
+    });
+  } catch (error) {
+    console.error("获取订阅配置失败:", error.response?.data?.msg || error.message);
+    return [];
+  }
+}
+
+/**
+ * 更新订阅配置表中的上次抓取时间戳
+ */
+export async function updateLastFetchTime(recordId, timestamp) {
+  const cfg = getConfig();
+  const token = await getTenantAccessToken();
+  const configTableId = cfg.subscription.config_table_id;
+
+  try {
+    const updateResp = await axios.put(
+      `https://open.feishu.cn/open-apis/bitable/v1/apps/${cfg.bitable.app_token}/tables/${configTableId}/records/${recordId}`,
+      { fields: { "上次抓取时间戳": timestamp } },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    if (updateResp.data?.msg === "success") {
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error(`更新订阅时间戳 ${recordId} 失败:`, error.response?.data?.msg || error.message);
+    return false;
+  }
+}
+
+/**
+ * 写入订阅内容表
+ */
+export async function writeToSubscriptionTable(record) {
+  const cfg = getConfig();
+  const token = await getTenantAccessToken();
+  const subscriptionTableId = cfg.subscription.table_id;
+
+  const fields = {
+    "链接": { text: record.url, url: record.url || "" },
+    "标题": record.title || "",
+    "作者": record.author || "",
+    "来源": record.source || "其他",
+    "方向": record.topics || "",
+    "内容概括": record.summary || "",
+    "视频/图片原文": record.transcript || "",
+    "帖子原文": record.originalText || "",
+    "优先级": String(record.priority || 3),
+    "状态": record.status || "未读",
+    "添加时间": new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 16).replace("T", " "),
+  };
+
+  try {
+    const postResp = await axios.post(
+      `https://open.feishu.cn/open-apis/bitable/v1/apps/${cfg.bitable.app_token}/tables/${subscriptionTableId}/records`,
+      { fields },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    if (postResp.data?.data?.record) {
+      console.log(`✅ 成功写入订阅内容: ${record.title}`);
+      return postResp.data.data.record;
+    }
+    return null;
+  } catch (error) {
+    console.error("写入订阅内容表失败:", error.response?.data?.msg || error.message);
+    return null;
+  }
+}
+
 export default {
   getConfig,
   getGroupMessages,
@@ -522,4 +639,7 @@ export default {
   findRecordByUrl,
   appendThought,
   updateBitableRecord,
+  getSubscriptions,
+  updateLastFetchTime,
+  writeToSubscriptionTable,
 };

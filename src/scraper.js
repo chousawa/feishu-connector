@@ -696,6 +696,259 @@ function cleanHtml(html) {
     .join("\n");
 }
 
+/**
+ * 从用户主页抓取帖子列表（返回帖子 URL 和发布时间）
+ * @param {string} userUrl 用户主页 URL
+ * @param {number} sinceTimestamp 只返回发布时间比这个时间戳更新的帖子
+ * @returns {Array} [{url, publishTime}, ...]
+ */
+export async function fetchUserFeed(userUrl, sinceTimestamp = 0) {
+  const platform = getPlatform(userUrl);
+
+  try {
+    switch (platform) {
+      case "X":
+        return await fetchXUserFeed(userUrl, sinceTimestamp);
+      case "小红书":
+        return await fetchXiaohongshuUserFeed(userUrl, sinceTimestamp);
+      case "微博":
+        return await fetchWeiboUserFeed(userUrl, sinceTimestamp);
+      default:
+        // 对于个人博客等其他平台，尝试通用抓取
+        return await fetchGenericBlogFeed(userUrl, sinceTimestamp);
+    }
+  } catch (error) {
+    console.error(`   ❌ 抓取用户主页失败: ${error.message}`);
+    return [];
+  }
+}
+
+/**
+ * X / Twitter 用户主页列表（用 Playwright 渲染）
+ */
+async function fetchXUserFeed(userUrl, sinceTimestamp) {
+  const { chromium } = await import("playwright");
+  const posts = [];
+  const MAX_POSTS = 5; // 限制最多抓取5条以避免被限流
+
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+
+    // X.com 加载较慢，用较长超时和 load 等待策略
+    await page.goto(userUrl, { waitUntil: "load", timeout: 60000 });
+
+    // 等待内容加载
+    await page.waitForTimeout(3000);
+
+    // 提取推文链接（取前MAX_POSTS条）
+    const tweetUrls = await page.evaluate(() => {
+      const urls = [];
+      const links = document.querySelectorAll('a[href*="/status/"]');
+      links.forEach(link => {
+        const url = link.href;
+        if (!urls.includes(url) && url.includes("/status/") && !url.includes("/analytics")) {
+          urls.push(url);
+        }
+      });
+      return urls.slice(0, 5);
+    });
+
+    tweetUrls.forEach(url => {
+      posts.push({ url, publishTime: Date.now() });
+    });
+
+    console.log(`   ✅ 从 X 用户主页抓取到 ${posts.length} 条推文`);
+  } catch (e) {
+    console.error(`   ❌ X 用户主页抓取失败: ${e.message}`);
+  } finally {
+    if (browser) await browser.close();
+  }
+
+  return posts;
+}
+
+/**
+ * 小红书用户主页列表（用 Playwright 渲染）
+ */
+async function fetchXiaohongshuUserFeed(userUrl, sinceTimestamp) {
+  const { chromium } = await import("playwright");
+  const posts = [];
+  const MAX_POSTS = 3; // 限制最多抓取3条以避免被限流
+
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    await page.goto(userUrl, { waitUntil: "load", timeout: 30000 });
+
+    // 等待内容加载
+    await page.waitForTimeout(2000);
+
+    // 提取笔记链接
+    const noteUrls = await page.evaluate(() => {
+      const urls = [];
+      const links = document.querySelectorAll('a[href*="/explore/"]');
+      links.forEach(link => {
+        const url = new URL(link.href, window.location.origin).href;
+        if (!urls.includes(url) && url.includes("/explore/")) {
+          urls.push(url);
+        }
+      });
+      return urls.slice(0, 3);
+    });
+
+    noteUrls.forEach(url => {
+      posts.push({ url, publishTime: Date.now() });
+    });
+
+    console.log(`   ✅ 从小红书用户主页抓取到 ${posts.length} 条笔记`);
+  } catch (e) {
+    console.error(`   ❌ 小红书用户主页抓取失败: ${e.message}`);
+  } finally {
+    if (browser) await browser.close();
+  }
+
+  return posts;
+}
+
+/**
+ * 微博用户主页列表（用 Playwright 渲染）
+ */
+async function fetchWeiboUserFeed(userUrl, sinceTimestamp) {
+  const { chromium } = await import("playwright");
+  const posts = [];
+  const MAX_POSTS = 3; // 限制最多抓取3条以避免被限流
+
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    await page.goto(userUrl, { waitUntil: "load", timeout: 30000 });
+
+    // 等待内容加载
+    await page.waitForTimeout(2000);
+
+    // 提取微博链接
+    const weiboUrls = await page.evaluate(() => {
+      const urls = [];
+      const links = document.querySelectorAll('a[href*="/weibo.com/"]');
+      links.forEach(link => {
+        const url = new URL(link.href, window.location.origin).href;
+        if (!urls.includes(url) && url.match(/\/\d+\/\w+/)) {
+          urls.push(url);
+        }
+      });
+      return urls.slice(0, 3);
+    });
+
+    weiboUrls.forEach(url => {
+      posts.push({ url, publishTime: Date.now() });
+    });
+
+    console.log(`   ✅ 从微博用户主页抓取到 ${posts.length} 条微博`);
+  } catch (e) {
+    console.error(`   ❌ 微博用户主页抓取失败: ${e.message}`);
+  } finally {
+    if (browser) await browser.close();
+  }
+
+  return posts;
+}
+
+/**
+ * 通用博客抓取（用 Playwright 渲染，提取链接列表）
+ */
+async function fetchGenericBlogFeed(blogUrl, sinceTimestamp) {
+  const { chromium } = await import("playwright");
+  const posts = [];
+
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+
+    console.log(`   🌐 用 Playwright 渲染博客页面...`);
+    await page.goto(blogUrl, { waitUntil: "load", timeout: 30000 });
+    await page.waitForTimeout(2000);
+
+    // 从 HTML 原始内容提取链接（处理浏览器规范化问题）
+    const html = await page.content();
+    const urlBase = new URL(blogUrl);
+    const domain = urlBase.hostname;
+    const basePath = urlBase.pathname;
+
+    // 从 HTML 提取所有 href
+    const hrefMatches = [...html.matchAll(/href="([^"]+)"/g)];
+    const candidates = new Map(); // URL -> 优先级
+
+    hrefMatches.forEach(match => {
+      let href = match[1];
+
+      // 处理相对 URL
+      if (!href.startsWith("http")) {
+        if (href.startsWith("/")) {
+          href = `https://${domain}${href}`;
+        } else {
+          href = `${blogUrl}${href}`;
+        }
+      }
+
+      try {
+        const linkUrl = new URL(href);
+
+        // 过滤：必须是同域
+        if (linkUrl.hostname !== domain) return;
+
+        let priority = 0;
+        const pathname = linkUrl.pathname;
+
+        // 模式1：日期格式 /essays/20240101/（高优先级）
+        if (/\/\d{8}\//.test(pathname)) {
+          priority = 10;
+        }
+        // 模式2：slug 格式 /essays/xxx/（不含 category/categories/tags）
+        else if (
+          pathname.startsWith(basePath) &&
+          !pathname.includes("category") &&
+          !pathname.includes("tag") &&
+          !pathname.includes("categories") &&
+          !pathname.includes("tags") &&
+          pathname !== basePath
+        ) {
+          priority = 8;
+        }
+
+        if (priority > 0) {
+          candidates.set(href, priority);
+        }
+      } catch (e) {
+        // 忽略无效 URL
+      }
+    });
+
+    // 按优先级排序并限制
+    const articleUrls = Array.from(candidates.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([url]) => url)
+      .slice(0, 3);
+
+    articleUrls.forEach(url => {
+      posts.push({ url, publishTime: Date.now() });
+    });
+
+    console.log(`   ✅ 从博客抓取到 ${posts.length} 篇文章`);
+  } catch (e) {
+    console.error(`   ❌ 博客抓取失败: ${e.message}`);
+  } finally {
+    if (browser) await browser.close();
+  }
+
+  return posts;
+}
+
 export default {
   fetchPageContent,
+  fetchUserFeed,
 };
