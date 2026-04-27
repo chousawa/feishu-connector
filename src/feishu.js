@@ -609,8 +609,13 @@ export async function urlExistsInSubscriptionTable(url) {
       if (listResp.data?.data?.items) {
         const found = listResp.data.data.items.some(record => {
           const linkField = record.fields["链接"];
-          // 链接字段可能是字符串或对象格式
-          const recordUrl = typeof linkField === "string" ? linkField : linkField?.url;
+          // 链接字段可能是字符串或对象格式（{link, text} 或 {url}）
+          let recordUrl = "";
+          if (typeof linkField === "string") {
+            recordUrl = linkField;
+          } else if (linkField && typeof linkField === "object") {
+            recordUrl = linkField.link || linkField.url || "";
+          }
           return recordUrl === url;
         });
 
