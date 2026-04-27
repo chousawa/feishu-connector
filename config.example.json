@@ -12,9 +12,21 @@
     "table_id": "订阅内容表 Table ID",
     "config_table_id": "订阅配置表 Table ID"
   },
+  "dashscope": {
+    "api_key": "你的阿里云百炼API Key（用于小红书视频转录和图片OCR）"
+  },
+  "kimi": {
+    "api_key": "你的Kimi API Key",
+    "base_url": "https://api.kimi.com/coding/",
+    "model": "kimi-for-coding"
+  },
   "minimax": {
-    "api_key": "你的MiniMax API Key",
+    "api_key": "你的MiniMax API Key（用于内容分析）",
     "base_url": "https://api.minimaxi.com/anthropic",
-    "model": "MiniMax-M2.5"
+    "model": "MiniMax-M2.7"
+  },
+  "x": {
+    "cookie": "你的X.com Cookie（可选，用于X用户主页订阅，需要手动获取）",
+    "ct0": "你的X.com ct0值（可选，从Cookie中提取）"
   }
 }
