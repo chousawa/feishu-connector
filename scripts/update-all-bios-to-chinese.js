@@ -76,7 +76,7 @@ async function updateAllBiosToChinese() {
   // 获取所有订阅配置
   console.log("📋 正在获取订阅配置...");
   const configResp = await axios.get(
-    `https://open.feishu.cn/open-apis/bitable/v1/apps/${cfg.bitable.app_token}/tables/tbl2VYBUBIoO7A7O/records`,
+    `https://open.feishu.cn/open-apis/bitable/v1/apps/${cfg.bitable.app_token}/tables/${cfg.subscription.config_table_id}/records`,
     {
       headers: { Authorization: `Bearer ${token}` },
       params: { page_size: 100 },
@@ -118,7 +118,7 @@ async function updateAllBiosToChinese() {
 
     try {
       const updateResp = await axios.put(
-        `https://open.feishu.cn/open-apis/bitable/v1/apps/${cfg.bitable.app_token}/tables/tbl2VYBUBIoO7A7O/records/${record.id}`,
+        `https://open.feishu.cn/open-apis/bitable/v1/apps/${cfg.bitable.app_token}/tables/${cfg.subscription.config_table_id}/records/${record.id}`,
         { fields: { "简介": newBio } },
         {
           headers: {

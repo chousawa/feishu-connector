@@ -93,7 +93,7 @@ async function importCompleteSources() {
   // 获取已有的订阅配置（用于去重）
   console.log("📋 正在获取现有订阅配置...");
   const existingResp = await axios.get(
-    `https://open.feishu.cn/open-apis/bitable/v1/apps/${cfg.bitable.app_token}/tables/tbl2VYBUBIoO7A7O/records`,
+    `https://open.feishu.cn/open-apis/bitable/v1/apps/${cfg.bitable.app_token}/tables/${cfg.subscription.config_table_id}/records`,
     { headers: { Authorization: `Bearer ${token}` }, params: { page_size: 100 } }
   );
 
@@ -130,7 +130,7 @@ async function importCompleteSources() {
       };
 
       const postResp = await axios.post(
-        `https://open.feishu.cn/open-apis/bitable/v1/apps/${cfg.bitable.app_token}/tables/tbl2VYBUBIoO7A7O/records`,
+        `https://open.feishu.cn/open-apis/bitable/v1/apps/${cfg.bitable.app_token}/tables/${cfg.subscription.config_table_id}/records`,
         newRecord,
         {
           headers: {
@@ -174,7 +174,7 @@ async function importCompleteSources() {
       };
 
       const postResp = await axios.post(
-        `https://open.feishu.cn/open-apis/bitable/v1/apps/${cfg.bitable.app_token}/tables/tbl2VYBUBIoO7A7O/records`,
+        `https://open.feishu.cn/open-apis/bitable/v1/apps/${cfg.bitable.app_token}/tables/${cfg.subscription.config_table_id}/records`,
         newRecord,
         {
           headers: {
@@ -218,7 +218,7 @@ async function importCompleteSources() {
       };
 
       const postResp = await axios.post(
-        `https://open.feishu.cn/open-apis/bitable/v1/apps/${cfg.bitable.app_token}/tables/tbl2VYBUBIoO7A7O/records`,
+        `https://open.feishu.cn/open-apis/bitable/v1/apps/${cfg.bitable.app_token}/tables/${cfg.subscription.config_table_id}/records`,
         newRecord,
         {
           headers: {
