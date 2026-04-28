@@ -171,7 +171,7 @@ async function runAutoProcess() {
 
     // 同时从API获取最近消息作为补充
     console.log("   从API获取最近消息...");
-    const apiLinks = await fetchLinks({ chatId: targetChatId });
+    const apiLinks = await fetchLinks({ chatId: targetChatId, limit: 5 });
 
     // 合并去重
     const allLinks = [...queueLinks];

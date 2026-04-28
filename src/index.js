@@ -178,26 +178,28 @@ async function fetchLinks(options) {
     process.exit(1);
   }
 
-  // 分页获取所有消息，收集所有新链接
   const existingUrls = await getExistingUrls();
   const allMessages = [];
-  let pageToken = null;
 
-  do {
-    const result = await getGroupMessages(options.chatId, 50, pageToken);
-    const messages = result.items;
-
-    if (messages.length === 0) break;
-
-    allMessages.push(...messages);
-    console.log(`   获取到 ${allMessages.length} 条消息...`);
-
-    pageToken = result.nextPageToken;
-    if (!pageToken) break;
-
-  } while (pageToken);
-
-  console.log(`   共获取 ${allMessages.length} 条消息\n`);
+  if (options.limit) {
+    // 只取最近 N 条消息，单次请求
+    const result = await getGroupMessages(options.chatId, options.limit);
+    allMessages.push(...result.items);
+    console.log(`   获取最近 ${allMessages.length} 条消息\n`);
+  } else {
+    // 分页获取所有消息
+    let pageToken = null;
+    do {
+      const result = await getGroupMessages(options.chatId, 50, pageToken);
+      const messages = result.items;
+      if (messages.length === 0) break;
+      allMessages.push(...messages);
+      console.log(`   获取到 ${allMessages.length} 条消息...`);
+      pageToken = result.nextPageToken;
+      if (!pageToken) break;
+    } while (pageToken);
+    console.log(`   共获取 ${allMessages.length} 条消息\n`);
+  }
 
   // 按时间倒序（最早在前，方便从旧到新处理）
   const messages = [...allMessages].reverse();
